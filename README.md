@@ -1,2 +1,2 @@
 # PHXpy
-Pheonix Package Manager (Python Module+Binary)
+Pheonix Package Manager (Python Local Module+Binary)
