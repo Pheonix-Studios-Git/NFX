@@ -1,2 +1,2 @@
-# PHXpy
-Pheonix Package Manager (Python Local Module+Binary)
+# NFX
+Nova Pheonix Package Manager (Python Local Module+Binary)
