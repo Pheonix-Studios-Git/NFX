@@ -146,7 +146,10 @@ def main(args:list[str]) -> None:
             ppi = True
             if "local" in values:
                 ppi = False
-            install_package(values, config, loc)
+            install_package(values, config, loc, ppi)
+        elif key == "remove":
+            loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            remove_package(values, config, loc)
         else:
             Hout.printH(f"Unknown Command - {key}:{", ".join(values)}", Flush=True, FontEnabled=True, Font=TextFont(
                 font_color=Color("red"),
