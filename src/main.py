@@ -12,6 +12,44 @@ from constants import *
 from config import *
 from downloader import *
 
+def print_commands(cmds:list[tuple[Union[dict[str, list[tuple]], str], str]]) -> None:
+    for cmd, desc in cmds:
+        if isinstance(cmd, dict):
+            for main_cmd, subcmds in cmd.items():
+                Hout.printH(
+                    f"{main_cmd}",
+                    f"\t{desc}",
+                    seperator="\n",
+                    FontEnabled=True,
+                    Flush=True,
+                    Font=TextFont(
+                        font_color=Color("cyan")
+                    )
+                )
+                for subcmd, subdesc in subcmds:
+                    Hout.printH(
+                        f"\t{subcmd}",
+                        f"\t\t{subdesc}",
+                        seperator="\n",
+                        FontEnabled=True,
+                        Flush=True,
+                        Font=TextFont(
+                            font_color=Color("cyan"),
+                            Italic=True
+                        )
+                    )
+        else:
+            Hout.printH(
+                f"{cmd}",
+                f"\t{desc}",
+                seperator="\n",
+                FontEnabled=True,
+                Flush=True,
+                Font=TextFont(
+                    font_color=Color("cyan")
+                )
+            )
+
 def print_help() -> None:
     """Prints help!"""
     Hout.printH(
@@ -41,26 +79,54 @@ def print_help() -> None:
     )
     
     commands = [
-        ("install:<pkg>", "Install one or more packages"),
+        ({
+            "install:<pkg>": [
+                ("local", "It is a local-repo/URL"),
+                ("subpkg", "Use Metadata file of a sub-package inside the main package")
+            ]
+        }, "Install one or more packages"),
         ("remove:<pkg>", "Remove packages"),
         ("search:<query>", "Search for a package"),
         ("update", "Update repository index"),
         ("upgrade", "Upgrade all packages"),
         ("config", "Show configuration"),
-        ("genconfig", "Generate default config")
+        ({
+            "genconfig": [
+                ("overwrite", "Overwrite config, if already present?")
+            ]
+        }, "Generate default config")
     ]
 
-    for cmd, desc in commands:
-        Hout.printH(
-            f"{cmd}",
-            f"\t{desc}",
-            seperator="\n",
-            FontEnabled=True,
-            Flush=True,
-            Font=TextFont(
-                font_color=Color("cyan")
-            )
+    print_commands(commands)
+
+def print_usage() -> None:
+    """Prints the usage!"""
+    Hout.printH(
+        "NFX (Nova Pheonix Package Manager)",
+        f"\tVersion: {VERSION}",
+        f"\tDeveloper: {DEVELOPER}", 
+        seperator="\n", 
+        Flush=True, 
+        FontEnabled=True, 
+        Font=TextFont(
+            font_color=Color("cyan"),
+            Bold=True
         )
+    )
+
+    Hout.printH(
+        "\nUsage: nfx <Option><Seperator><Args>",
+        f"Seperators: {SEPERATORS}",
+        "Quotes allowed for multi word arguments\n",
+        "Use 'help' for more information!\n",
+        seperator="\n",
+        FontEnabled=True, 
+        Flush=True, 
+        Font=TextFont(
+            font_color=Color("yellow"),
+            Italic=True
+        )
+    )
 
 def generate_config(overwrite: bool = False):
     """Generate default config.json for NFX"""
@@ -115,21 +181,58 @@ def show_config() -> None:
 
 def parse_arg(arg:str) -> tuple:
     """Parse arg using NFX format"""
+    arg = arg.strip()
+    
+    # Split key and value at first separator
+    key = arg
+    val_str = ""
     for sep in SEPERATORS:
         if sep in arg:
             key, val_str = arg.split(sep, 1)
-            values = val_str.split(sep)
-            return key, values
+            key = key.strip()
+            val_str = val_str.strip()
+            break
 
-    return arg.strip(), []
+    # Parse sub-values respecting quotes
+    values: list = []
+    sub_value = ""
+    in_quotes = False
+
+    i = 0
+    while i < len(val_str):
+        char = val_str[i]
+
+        if char == '"':
+            # Toggle in_quotes
+            in_quotes = not in_quotes
+            i += 1
+            continue
+
+        if char in SEPERATORS and not in_quotes:
+            # End of sub-value
+            values.append(sub_value.strip())
+            sub_value = ""
+        else:
+            sub_value += char
+
+        i += 1
+
+    if sub_value:
+        values.append(sub_value.strip())
+
+    return key, values
 
 def main(args:list[str]) -> None:
     """Main func"""
-    parsed_args = []
+    parsed_args: list[tuple[str, list[str]]] = []
     for arg in args:
         parsed_args.append(parse_arg(arg))
 
     config = Config.load()
+
+    if len(parsed_args) == 0:
+        print_usage()
+        os._exit(1)
 
     for key, values in parsed_args:
         if key == "help":
@@ -144,8 +247,21 @@ def main(args:list[str]) -> None:
         elif key == "install":
             loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
             ppi = True
+            subpkg = ""
             if "local" in values:
                 ppi = False
+            if "subpkg" in values:
+                idx = values.index("subpkg")
+                if len(values) < idx + 1:
+                    Hout.printH(
+                        "Command 'subpkg' requires an argument!\n\nExample: 'install:somepackage:subpkg:\\\"Name of sub-package\\\"\n",
+                        Font=TextFont(
+                            font_color=Color("red"),
+                            Bold=True
+                        ),
+                        FontEnabled=True
+                    )
+                    os._exit(-2)
             install_package(values, config, loc, ppi)
         elif key == "remove":
             loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
