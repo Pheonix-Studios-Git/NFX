@@ -81,14 +81,18 @@ def print_help() -> None:
     commands = [
         ({
             "install:<pkg>": [
-                ("local", "It is a local-repo/URL"),
-                ("subpkg", "Use Metadata file of a sub-package inside the main package")
+                ("local", "It is a local-repo/URL")
             ]
         }, "Install one or more packages"),
         ("remove:<pkg>", "Remove packages"),
-        ("search:<query>", "Search for a package"),
-        ("update", "Update repository index"),
-        ("upgrade", "Upgrade all packages"),
+        ({
+            "info:<pkg>": [
+                ("license", "Show it's license"),
+                ("author", "Show the author of the package"),
+                ("doc", "Show the documentation of the package"),
+                ("desc", "Show the description of the package")
+            ]
+        }, "Shows Information about the package"),
         ("config", "Show configuration"),
         ({
             "genconfig": [
@@ -266,6 +270,40 @@ def main(args:list[str]) -> None:
         elif key == "remove":
             loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
             remove_package(values, config, loc)
+        elif key == "info":
+            loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            md, pkg_path = info_package(values, config, loc)
+            if len(values) == 1:
+                values.append("author")
+                values.append("desc")
+
+            if "author" in values:
+                printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+            if "desc" in values:
+                printH(f"Description: {md.get("Description", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+            if "license" in values:
+                printH("License:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+                if os.path.exists(os.path.join(pkg_path, md.get("License", "LICENSE"))):
+                    data = ""
+                    with open(os.path.join(pkg_path, md.get("License", "LICENSE")), "r") as f:
+                        f.seek(0)
+                        data = f.read()
+                    print(data)
+                    print("\n\n")
+                else:
+                    print("Not Found!\n\n")
+            if "doc" in values:
+                printH("Documentation:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+                if os.path.exists(os.path.join(pkg_path, md.get("Readme", "README.md"))):
+                    data = ""
+                    with open(os.path.join(pkg_path, md.get("Readme", "README.md")), "r") as f:
+                        f.seek(0)
+                        data = f.read()
+                    print(data)
+                    print("\n\n")
+                else:
+                    print("Not Found!\n\n")
+                    
         else:
             Hout.printH(f"Unknown Command - {key}:{", ".join(values)}", Flush=True, FontEnabled=True, Font=TextFont(
                 font_color=Color("red"),

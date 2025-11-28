@@ -9,7 +9,7 @@ from config import *
 
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
-PPI_PAGE = "https://pheonix-package-index.ct.ws/data/"
+PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 
 def fetch_repo(repo_url:str, download_dir:str, ppi:bool) -> str:
     """
@@ -31,9 +31,8 @@ def fetch_repo(repo_url:str, download_dir:str, ppi:bool) -> str:
         zippath = os.path.join(download_dir, repo_name + ".zip")
         try:
             urllib.request.urlretrieve(repo_url, zippath)
-            os.mkdir(target_dir)
             with zipfile.ZipFile(zippath, 'r') as zip_ref:
-                zip_ref.extractall(target_dir)
+                zip_ref.extractall(target_path)
             os.remove(zippath)
         except zipfile.BadZipFile:
              printH("Not a Valid Zip File:", zippath, Font=TextFont(font_color=Color("red"), Bold=True), FontEnabled=True)
@@ -183,7 +182,7 @@ def remove_package(args: list, config: Config, name: str):
     printH(f"Package '{name}' removed successfully!", FontEnabled=True, Font=TextFont(font_color=Color("green")))
 
 
-def info_package(args: list, config: Config, name: str) -> dict:
+def info_package(args: list, config: Config, name: str) -> tuple[dict, str]:
     download_dir = config.download_dir
     cache_dir = config.cache_dir
     install_dir = config.install_dir
@@ -193,4 +192,4 @@ def info_package(args: list, config: Config, name: str) -> dict:
         return None
 
     metadata = load_nfx_metadata(os.path.join(cache_dir, name))
-    return metadata
+    return metadata, os.path.join(cache_dir, name)
