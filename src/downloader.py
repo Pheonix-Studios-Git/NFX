@@ -1,5 +1,7 @@
 """Downloading Manager File"""
-import subprocess, os, shutil, json, stat
+import subprocess, os, shutil, json, stat, zipfile
+import urllib.request
+
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions.HyperOut import *
 from __init__ import *
@@ -7,20 +9,39 @@ from config import *
 
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
-def fetch_repo(repo_url:str, download_dir:str) -> str:
+PPI_PAGE = "https://pheonix-package-index.ct.ws/data/"
+
+def fetch_repo(repo_url:str, download_dir:str, ppi:bool) -> str:
     """
     Clone a git repo or copy local path to download_dir
     Returns path to cloned repo.
     """
-    repo_name = os.path.basename(repo_url.rstrip("/")).replace(".git", "")
+    repo_name = os.path.basename(repo_url.rstrip("/")).replace(".zip", "")
     target_path = os.path.join(download_dir, repo_name)
+
+    if ppi:
+        repo_url = PPI_PAGE + repo_url + ".zip"
         
     if os.path.exists(repo_url): # Local path
         if os.path.exists(target_path):
             shutil.rmtree(target_path)
         shutil.copytree(repo_url, target_path)
-    else: # Git URL
-        subprocess.run(["git", "clone", repo_url, target_path], check=True)
+    else: # Assuming zip
+        os.mkdir(target_path)
+        zippath = os.path.join(download_dir, repo_name + ".zip")
+        try:
+            urllib.request.urlretrieve(repo_url, zippath)
+            os.mkdir(target_dir)
+            with zipfile.ZipFile(zippath, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            os.remove(zippath)
+        except zipfile.BadZipFile:
+             printH("Not a Valid Zip File:", zippath, Font=TextFont(font_color=Color("red"), Bold=True), FontEnabled=True)
+             os.remove(zippath)
+             os._exit(-4)
+        except Exception:
+            printH("Error Downloading the file:", repo_url, "to", target_path, Font=TextFont(font_color=Color("red"), Bold=True), FontEnabled=True)
+            os._exit(-5)
 
     return target_path
 
@@ -113,14 +134,20 @@ def run_post_install(script_path: str):
         printH("PostInstall Failed to run!", FontEnabled=True, Font=TextFont(font_color=Color("red")))
 
 def install_package(args: list, config: Config, repo_url: str = None, ppi: bool = True):
-    # PPI is useless for now
     download_dir = config.download_dir
     cache_dir = config.cache_dir
     install_dir = config.install_dir
 
+    if not os.path.exists(download_dir):
+        os.mkdir(download_dir)
+    if not os.path.exists(cache_dir):
+        os.mkdir(cache_dir)
+    if not os.path.exists(install_dir):
+        os.mkdir(install_dir)
+
     # fetch repo
     printH("Fetching repo...", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-    repo_path = fetch_repo(repo_url or "PPI_DEFAULT_URL", download_dir)
+    repo_path = fetch_repo(repo_url, download_dir, ppi)
     
     # load nfx.json
     printH("Loading package metadata...", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
@@ -154,3 +181,16 @@ def remove_package(args: list, config: Config, name: str):
     shutil.rmtree(os.path.join(cache_dir, name))
 
     printH(f"Package '{name}' removed successfully!", FontEnabled=True, Font=TextFont(font_color=Color("green")))
+
+
+def info_package(args: list, config: Config, name: str) -> dict:
+    download_dir = config.download_dir
+    cache_dir = config.cache_dir
+    install_dir = config.install_dir
+
+    if not os.path.exists(os.path.join(cache_dir, name)):
+        printH(f"Package '{name}' was not found in cache, please don't alter the cache directory!", FontEnabled=True, Font=TextFont(font_color=Color("red")))
+        return None
+
+    metadata = load_nfx_metadata(os.path.join(cache_dir, name))
+    return metadata
