@@ -1,15 +1,15 @@
 {
-    "Name": "pac",
-    "Description": "Pheonix Assembler Collection",
+    "Name": "nfx",
+    "Description": "Nova Pheonix Package Manager",
     "Author": "Pheonix-Studios",
     "License": "LICENSE",
     "Readme": "README.md",
     "Binaries": [
         {
-            "Name": "pac",
+            "Name": "nfx",
             "Os": ["linux"],
             "Arch": ["x86_64"],
-            "Path": "PAC/bin/linux/x86_64/pac"
+            "Path": "dist/nfx"
         }
     ]
 }
