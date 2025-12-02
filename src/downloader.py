@@ -171,7 +171,7 @@ def search_packages(args: list, config: Config):
         for arg in args:
             if arg.lower() in name.lower():
                 printH(
-                    f"{name}:\n\t{package.get("description", "No Description")}",
+                    f"{name} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "No Description")}",
                     FontEnabled=True,
                     Font = TextFont(
                         font_color = Color("cyan"),
@@ -194,7 +194,7 @@ def search_package(query: str, args: list, config: Config):
         for package in packages_data:
             name = package.get("name", "")
             printH(
-                f"{name if name else "<No Name>"}:\n\t{package.get("description", "<No Description>")}",
+                f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "<No Description>")}",
                 FontEnabled=True,
                 Font = TextFont(
                     font_color = Color("cyan"),
@@ -217,7 +217,7 @@ def search_package(query: str, args: list, config: Config):
         
         if query in n:
             printH(
-                f"{name if name else "<No Name>"}:\n\t{package.get("description", "<No Description>")}",
+                f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "<No Description>")}",
                 FontEnabled=True,
                 Font = TextFont(
                     font_color = Color("cyan"),
