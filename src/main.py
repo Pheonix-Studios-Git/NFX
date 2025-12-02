@@ -93,6 +93,14 @@ def print_help() -> None:
                 ("desc", "Show the description of the package")
             ]
         }, "Shows Information about the package"),
+        ("update", "Updates the package list"),
+        ("searchm:<queries>", "Searches for packages which contain/are_equal to the query/query_list (Not Case Sensitive)"),
+        ({
+            "search:<query>": [
+                ("all", "Just show all, ignore the query"),
+                ("case", "Make it Case-Sensitive")
+            ]
+        }, "Search for packages which contain/are_equal to the query (Not Case Sensitive by default)"),
         ("config", "Show configuration"),
         ({
             "genconfig": [
@@ -238,6 +246,9 @@ def main(args:list[str]) -> None:
         print_usage()
         os._exit(1)
 
+    if not os.path.exists(BASE_DIR_DEF):
+        os.mkdir(BASE_DIR_DEF)
+
     for key, values in parsed_args:
         if key == "help":
             print_help()
@@ -303,7 +314,15 @@ def main(args:list[str]) -> None:
                     print("\n\n")
                 else:
                     print("Not Found!\n\n")
-                    
+        elif key == "update":
+            update_packages([], config)
+        elif key == "searchm":
+            queries = values if len(values) > 0 else Hout.exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            search_packages(queries, config)
+        elif key == "search":
+            query = values[0] if len(values) > 0 else Hout.exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            values.pop(0)
+            search_package(query, values, config)
         else:
             Hout.printH(f"Unknown Command - {key}:{", ".join(values)}", Flush=True, FontEnabled=True, Font=TextFont(
                 font_color=Color("red"),

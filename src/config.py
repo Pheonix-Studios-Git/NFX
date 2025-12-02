@@ -11,7 +11,7 @@ class Config:
     """Config Class"""
     cache_dir: str = CACHE_DIR_DEF
     install_dir: str = INSTALL_DIR_DEF
-    download_dir: str = DOWNLOAD_DIR_DEF
+    download_dir: str = DOWNLOAD_DIR_DEF,
     debug: bool = False
     default_repos: list[str] = None
 
