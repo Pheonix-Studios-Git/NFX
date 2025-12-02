@@ -1,6 +1,7 @@
 """Downloading Manager File"""
-import subprocess, os, shutil, json, stat, zipfile
+import subprocess, os, shutil, json, stat, zipfile, time
 import urllib.request
+import concurrent.futures
 
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions.HyperOut import *
@@ -296,3 +297,40 @@ def info_package(args: list, config: Config, name: str) -> tuple[dict, str]:
 
     metadata = load_nfx_metadata(os.path.join(cache_dir, name))
     return metadata, os.path.join(cache_dir, name)
+
+def install_packages(packages: list, args: list, config: Config):
+    MAX_THREADS = 5
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        results = executor.map(
+            lambda args: install_package(args, config, ppi=True),
+            packages
+        )
+
+        for result in results:
+            print(result) # Print info
+
+def remove_packages(packages: list, args: list, config: Config):
+    MAX_THREADS = 5
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        results = executor.map(
+            lambda args: remove_package(args, config),
+            packages
+        )
+
+        for result in results:
+            print(result)
+
+def enable_winterminal():
+    import sys
+    if sys.platform.startswith('win'):
+        try:
+            import ctypes, wintypes
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.SetConsoleMode.restype = wintypes.BOOL
+            kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+            kernel32.GetStdHandle.restype = wintypes.HANDLE
+            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+        except Exception:
+            pass    
+            

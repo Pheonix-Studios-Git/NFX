@@ -1,6 +1,6 @@
 """Main file"""
 
-import os
+import os, sys
 
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions import HyperOut as Hout
@@ -84,7 +84,9 @@ def print_help() -> None:
                 ("local", "It is a local-repo/URL")
             ]
         }, "Install one or more packages"),
+        ("installs:<packages>", "Install one or more packages in parallel (Faster)"),
         ("remove:<pkg>", "Remove packages"),
+        ("removes:<packages>", "Remove one or more packages in parallel (Faster)"),
         ({
             "info:<pkg>": [
                 ("license", "Show it's license"),
@@ -94,7 +96,7 @@ def print_help() -> None:
             ]
         }, "Shows Information about the package"),
         ("update", "Updates the package list"),
-        ("searchm:<queries>", "Searches for packages which contain/are_equal to the query/query_list (Not Case Sensitive)"),
+        ("searchs:<queries>", "Searches for packages which contain/are_equal to the query/query_list (Not Case Sensitive)"),
         ({
             "search:<query>": [
                 ("all", "Just show all, ignore the query"),
@@ -236,6 +238,9 @@ def parse_arg(arg:str) -> tuple:
 
 def main(args:list[str]) -> None:
     """Main func"""
+    if sys.platform.startswith("win"):
+        enable_winterminal()
+    
     parsed_args: list[tuple[str, list[str]]] = []
     for arg in args:
         parsed_args.append(parse_arg(arg))
@@ -278,9 +283,17 @@ def main(args:list[str]) -> None:
                     )
                     os._exit(-2)
             install_package(values, config, loc, ppi)
+        elif key == "installs":
+            if len(values) <= 0:
+                Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            install_packages(values, [], config)
         elif key == "remove":
             loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
             remove_package(values, config, loc)
+        elif key == "removes":
+            if len(values) <= 0:
+                Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            remove_packages(values, [], config)
         elif key == "info":
             loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
             md, pkg_path = info_package(values, config, loc)
@@ -316,7 +329,7 @@ def main(args:list[str]) -> None:
                     print("Not Found!\n\n")
         elif key == "update":
             update_packages([], config)
-        elif key == "searchm":
+        elif key == "searchs":
             queries = values if len(values) > 0 else Hout.exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
             search_packages(queries, config)
         elif key == "search":
