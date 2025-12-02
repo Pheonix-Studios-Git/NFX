@@ -50,9 +50,10 @@ def fetch_repo(repo_url:str, download_dir:str, ppi:bool, package_json:dict) -> s
              os.remove(zippath)
              os.rmdir(target_path)
              os._exit(-4)
-        except Exception:
+        except Exception as e:
             printH("Error Downloading the file:", repo_url + package_json[index].get("zipfile", "Error404NotFound"), "to", target_path, Font=TextFont(font_color=Color("red"), Bold=True), FontEnabled=True)
             os.rmdir(target_path)
+            printH(e, Font=TextFont(font_color=Color("red"), Bold=True), FontEnabled=True)
             os._exit(-5)
 
     return target_path
@@ -302,7 +303,7 @@ def install_packages(packages: list, args: list, config: Config):
     MAX_THREADS = 5
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         results = executor.map(
-            lambda args: install_package(args, config, ppi=True),
+            lambda _args_: install_package(args, config, _args_, ppi=True),
             packages
         )
 
@@ -313,7 +314,7 @@ def remove_packages(packages: list, args: list, config: Config):
     MAX_THREADS = 5
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         results = executor.map(
-            lambda args: remove_package(args, config),
+            lambda _args_: remove_package(args, config, _args_),
             packages
         )
 
