@@ -245,8 +245,8 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
             [
                 "ssh-keygen",
                 "-Y", "verify",
-                "-f", metadata.get("Build", {}).get("AllowedSigners", ""),
-                "-I", metadata.get("Build", {}).get("SignerIdentity", ""),
+                "-f", os.path.join(metadata["DownloadPath"], metadata.get("Build", {}).get("AllowedSigners", "")),
+                "-I", metadata.get("Build", {}).get("SignatureIdentity", ""),
                 "-n", "file",
                 "-s", sigpath,
             ],
@@ -258,7 +258,7 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
             if input("").lower() not in ("y", "yes", "yeah", "yea"):
                 return False
     else:
-        step("Package is unverified with (Risk: High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+        step("Package is unverified (Risk: High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
         if input("").lower() not in ("y", "yes", "yeah", "yea"):
             return False
 

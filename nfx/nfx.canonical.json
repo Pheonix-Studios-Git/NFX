@@ -11,8 +11,8 @@
         "linux"
       ],
       "Path": "dist/nfx",
-      "Sha256": "f4fd553de584f144cb1e90a2622bfd518430136f272e934210e095e60e413ae2",
-      "Size": 12530864
+      "Sha256": "59b7c4642bb4e2d7ca5120205adf3ea262edba00297232801c7874946ab551a9",
+      "Size": 12530736
     }
   ],
   "Build": {

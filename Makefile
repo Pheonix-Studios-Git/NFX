@@ -26,7 +26,7 @@ dirs:
 
 build-linux:
 	@printf "$(YELLOW)==> Building %s \n$(RESET)" $(NFX_LINUX_OUT)
-	@pyinstaller src/main.py \
+	@pyinstaller src/__main__.py \
 		--onefile \
 		--name nfx \
 		--distpath dist \
