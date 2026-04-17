@@ -1,0 +1,32 @@
+{
+  "Author": "Pheonix-Studios",
+  "Binaries": [
+    {
+      "Arch": [
+        "x86_64"
+      ],
+      "Executable": true,
+      "Name": "nfx",
+      "Os": [
+        "linux"
+      ],
+      "Path": "dist/nfx",
+      "Sha256": "8869e5490085bf271032da12383a0621c7eeee7de8969824cc2585e1b043779b",
+      "Size": 12530896
+    }
+  ],
+  "Build": {
+    "AllowedSigners": "keys/allowed_signers",
+    "Date": "2026-04-17",
+    "SignatureIdentity": "pheonix-nfx"
+  },
+  "Conflicts": [],
+  "Dependencies": [],
+  "Description": "Nova Pheonix Package Manager",
+  "Id": "pheonix_studios.nfx",
+  "License": "LICENSE",
+  "Name": "NFX",
+  "Readme": "README.md",
+  "Status": "beta",
+  "Version": "0.1.0"
+}

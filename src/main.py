@@ -68,11 +68,7 @@ def print_help() -> None:
     )
 
     Hout.printH(
-        "\nUsage: nfx <Option><Seperator><Args/Flags>",
-        f"Seperators: {SEPERATORS}",
-        "Quotes allowed for multi word arguments\n",
-        "New Posix based Argument system also works!",
-        "Usage: nfx <Option> <Args> [--<Flags>]\n",
+        "\nUsage: nfx <Option> <Args> [--<Flags>]\n",
         seperator="\n",
         FontEnabled=True, 
         Flush=True, 
@@ -84,15 +80,15 @@ def print_help() -> None:
     
     commands = [
         ({
-            "install:<pkg>": [
+            "install <pkg>": [
                 ("local", "It is a local-repo/URL")
             ]
-        }, "Install one or more packages"),
-        ("installs:<packages>", "Install one or more packages in parallel (Faster)"),
-        ("remove:<pkg>", "Remove packages"),
-        ("removes:<packages>", "Remove one or more packages in parallel (Faster)"),
+        }, "Install one or more packages (all dependencies are installed paralelly)"),
+        ("installs <packages>", "Install one or more packages in parallel"),
+        ("remove <pkg>", "Removes a package"),
+        ("removes <packages>", "Remove one or more packages in parallel"),
         ({
-            "info:<pkg>": [
+            "info <pkg>": [
                 ("license", "Show it's license"),
                 ("author", "Show the author of the package"),
                 ("doc", "Show the documentation of the package"),
@@ -100,9 +96,15 @@ def print_help() -> None:
             ]
         }, "Shows Information about the package"),
         ("update", "Updates the package list"),
-        ("searchs:<queries>", "Searches for packages which contain/are_equal to the query/query_list (Not Case Sensitive)"),
+        ("clean", "Clears cache"),
         ({
-            "search:<query>": [
+            "searchs <queries>": [
+                ("all", "Just show all, ignore the query"),
+                ("case", "Make it Case-Sensitive")
+            ]
+        }, "Searches for packages which contain/are_equal to query/query_list (Not Case Sensitive by default)"),
+        ({
+            "search <query>": [
                 ("all", "Just show all, ignore the query"),
                 ("case", "Make it Case-Sensitive")
             ]
@@ -133,11 +135,7 @@ def print_usage() -> None:
     )
 
     Hout.printH(
-        "\nUsage: nfx <Option><Seperator><Args>",
-        f"Seperators: {SEPERATORS}",
-        "Quotes allowed for multi word arguments\n",
-        "New Posix based Argument system also works!",
-        "Usage: nfx <Option> <Args> [--<Flags>]\n",
+        "\nUsage: nfx <Option> <Args> [--<Flags>]\n",
         "Use 'help' for more information!\n",
         seperator="\n",
         FontEnabled=True, 
@@ -235,72 +233,6 @@ def parse_posix_args(argv: list[str]) -> dict:
 
     return result
 
-def parse_arg(arg:str) -> tuple:
-    """Parse arg using NFX format"""
-    arg = arg.strip()
-    
-    # Split key and value at first separator
-    key = arg
-    val_str = ""
-    for sep in SEPERATORS:
-        if sep in arg:
-            key, val_str = arg.split(sep, 1)
-            key = key.strip()
-            val_str = val_str.strip()
-            break
-
-    # Parse sub-values respecting quotes
-    values: list = []
-    sub_value = ""
-    in_quotes = False
-
-    i = 0
-    while i < len(val_str):
-        char = val_str[i]
-
-        if char == '"':
-            # Toggle in_quotes
-            in_quotes = not in_quotes
-            i += 1
-            continue
-
-        if char in SEPERATORS and not in_quotes:
-            # End of sub-value
-            values.append(sub_value.strip())
-            sub_value = ""
-        else:
-            sub_value += char
-
-        i += 1
-
-    if sub_value:
-        values.append(sub_value.strip())
-
-    return key, values
-
-def normalize_command(cmd: str, args: list[str], flags: set):
-    """
-    Bridge POSIX <-> legacy system
-    """
-
-    if not cmd:
-        return {"key": "", "values": []}
-
-    legacy = {
-        "key": cmd,
-        "values": []
-    }
-
-    if args:
-        legacy["values"].append(args[0])
-
-    if len(args) > 1:
-        legacy["values"].extend(args[1:])
-
-    legacy["values"].extend(flags)
-
-    return legacy
-
 def main(args:list[str]) -> None:
     """Main func"""
     if sys.platform.startswith("win"):
@@ -321,60 +253,39 @@ def main(args:list[str]) -> None:
     if not os.path.exists(BASE_DIR_DEF):
         os.mkdir(BASE_DIR_DEF)
 
-    cmd = normalize_command(command, args_list, flags)
-
-    key = cmd["key"]
-    values = cmd["values"]
-
-    if key == "help":
+    if command == "help":
         print_help()
-    elif key == "config":
+    elif command == "config":
         show_config()
-    elif key == "genconfig":
-        overwrite = False
-        if len(values) > 0:
-            overwrite = True if "overwrite" in values else False
+    elif command == "genconfig":
+        overwrite = "overwrite" in flags
         generate_config(overwrite=overwrite)
-    elif key == "install":
-        loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        ppi = "local" not in flags
-        subpkg = ""
-        if "subpkg" in values:
-            idx = values.index("subpkg")
-            if len(values) < idx + 1:
-                Hout.printH(
-                    "Command 'subpkg' requires an argument!\n\nExample: 'install:somepackage:subpkg:\\\"Name of sub-package\\\"\n",
-                    Font=TextFont(
-                        font_color=Color("red"),
-                        Bold=True
-                    ),
-                    FontEnabled=True
-                )
-                os._exit(-2)
-        install_package(values, config, loc, ppi)
-    elif key == "installs":
-        if len(values) <= 0:
+    elif command == "install":
+        pkg = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        install_package(pkg, args_list, config)
+    elif command == "installs":
+        if len(args_list) <= 0:
             Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        install_packages(values, [], config)
-    elif key == "remove":
-        loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        remove_package(values, config, loc)
-    elif key == "removes":
-        if len(values) <= 0:
+        install_packages(args_list, flags, config)
+    elif command == "remove":
+        pkg = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        remove_package(flags, config, pkg)
+    elif command == "removes":
+        if len(args_list) <= 0:
             Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        remove_packages(values, [], config)
-    elif key == "info":
-        loc = values[0] if len(values) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        md, pkg_path = info_package(values, config, loc)
-        if len(values) == 1:
-            values.append("author")
-            values.append("desc")
+        remove_packages(args_list, flags, config)
+    elif command == "info":
+        loc = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        md, pkg_path = info_package(loc, flags, config)
+        if len(flags) == 1:
+            args_list.append("author")
+            args_list.append("desc")
 
-        if "author" in values:
+        if "author" in flags:
             printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-        if "desc" in values:
+        if "desc" in flags:
             printH(f"Description: {md.get("Description", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-        if "license" in values:
+        if "license" in flags:
             printH("License:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
             if os.path.exists(os.path.join(pkg_path, md.get("License", "LICENSE"))):
                 data = ""
@@ -385,7 +296,7 @@ def main(args:list[str]) -> None:
                 print("\n\n")
             else:
                 print("Not Found!\n\n")
-        if "doc" in values:
+        if "doc" in flags:
             printH("Documentation:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
             if os.path.exists(os.path.join(pkg_path, md.get("Readme", "README.md"))):
                 data = ""
@@ -396,17 +307,20 @@ def main(args:list[str]) -> None:
                 print("\n\n")
             else:
                 print("Not Found!\n\n")
-    elif key == "update":
-        update_packages([], config)
-    elif key == "searchs":
-        queries = values if len(values) > 0 else Hout.exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        search_packages(queries, config)
-    elif key == "search":
-        query = values[0] if len(values) > 0 else Hout.exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        values.pop(0)
-        search_package(query, values, config)
+    elif command == "update":
+        update_packages(flags, config)
+    elif command == "searchs":
+        queries = args_list if len(args_list) > 0 else Hout.exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        search_packages(queries, flags, config)
+    elif command == "search":
+        query = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        args_list.pop(0)
+        search_package(query, flags, config)
+    elif command == "clean":
+        shutil.rmtree(config.cache_dir)
+        printH("Cleared Cache", FontEnabled=True, Font=TextFont(font_color=Color("green"),Bold=True))
     else:
-        Hout.printH(f"Unknown Command - {key}:{", ".join(values)}", Flush=True, FontEnabled=True, Font=TextFont(
+        Hout.printH(f"Unknown Command - {command} {" ".join(args_list)}", Flush=True, FontEnabled=True, Font=TextFont(
             font_color=Color("red"),
             Bold=True
         ))

@@ -11,7 +11,7 @@ class Config:
     """Config Class"""
     cache_dir: str = CACHE_DIR_DEF
     install_dir: str = INSTALL_DIR_DEF
-    download_dir: str = DOWNLOAD_DIR_DEF,
+    download_dir: str = DOWNLOAD_DIR_DEF
     debug: bool = False
     default_repos: list[str] = None
 
@@ -19,7 +19,13 @@ class Config:
     def load(path:str=CONFIG_PATH_DEF):
         """Loads the config"""
         if not os.path.exists(path):
-            return Config(default_repos=[])
+            return Config(
+                cache_dir=CACHE_DIR_DEF, 
+                debug=False, 
+                default_repos=[], 
+                install_dir=INSTALL_DIR_DEF,
+                download_dir=DOWNLOAD_DIR_DEF
+            )
         with open(path, "r") as f:
             data = json.load(f)
         return Config(
