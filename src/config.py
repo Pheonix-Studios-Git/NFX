@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-from constants import CACHE_DIR_DEF, CONFIG_PATH_DEF, INSTALL_DIR_DEF, DOWNLOAD_DIR_DEF
+from src.constants import CACHE_DIR_DEF, CONFIG_PATH_DEF, INSTALL_DIR_DEF, DOWNLOAD_DIR_DEF
 
 @dataclass
 class Config:

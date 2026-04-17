@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['../src/config.py', '../src/constants.py', '../src/downloader.py', '../src/__init__.py', '../src/main.py'],
+    ['../src/main.py'],
     pathex=[],
     binaries=[],
     datas=[],

@@ -26,7 +26,12 @@ dirs:
 
 build-linux:
 	@printf "$(YELLOW)==> Building %s \n$(RESET)" $(NFX_LINUX_OUT)
-	@pyinstaller $(wildcard src/*.py) --onefile --name nfx --distpath dist --workpath build --specpath build
+	@pyinstaller src/main.py \
+		--onefile \
+		--name nfx \
+		--distpath dist \
+		--workpath build \
+		--specpath build
 	@printf "$(GREEN)==> Done building %s \n$(RESET)" $(NFX_LINUX_OUT)
 
 canonical: $(NFX_DIR)/tmp2.json

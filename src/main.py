@@ -10,9 +10,9 @@ from phardwareitk.Extensions import HyperIn as Hin
 from phardwareitk.FileSystem import FileSystem as fs
 from phardwareitk.CLI.cliToolKit import *
 
-from constants import *
-from config import *
-from downloader import *
+from src.constants import *
+from src.config import *
+from src.downloader import *
 
 def print_commands(cmds:list[tuple[Union[dict[str, list[tuple]], str], str]]) -> None:
     for cmd, desc in cmds:

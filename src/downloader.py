@@ -5,10 +5,10 @@ import concurrent.futures
 
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions.HyperOut import *
-from __init__ import *
-from config import *
+from src import *
+from src.config import *
 
-from constants import BASE_DIR_DEF
+from src.constants import BASE_DIR_DEF
 
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
