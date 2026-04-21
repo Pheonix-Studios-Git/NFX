@@ -14,7 +14,7 @@
     "Build": {
         "AllowedSigners": "keys/allowed_signers",
         "SignatureIdentity": "pheonix-nfx",
-        "Date": "2026-04-17"
+        "Date": "2026-04-21"
     },
     
     "Binaries": [
@@ -22,7 +22,16 @@
             "Name": "nfx",
             "Os": ["linux"],
             "Arch": ["x86_64"],
-            "Path": "dist/nfx",
+            "Path": "bin/linux/x86_64/dist/nfx",
+            "Size": 0,
+            "Sha256": "",
+            "Executable": true
+        },
+        {
+            "Name": "nfx",
+            "Os": ["windows"],
+            "Arch": ["x86_64"],
+            "Path": "bin/windows/x86_64/dist/nfx",
             "Size": 0,
             "Sha256": "",
             "Executable": true

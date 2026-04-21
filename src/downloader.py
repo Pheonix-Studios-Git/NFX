@@ -10,6 +10,8 @@ from src.config import *
 
 from src.constants import BASE_DIR_DEF
 
+from datetime import datetime
+
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
@@ -200,36 +202,6 @@ def run_post_install(script_path: str):
         subprocess.run([script_path], check=True)
     else:
         step("Post Install failed to run!", status="Error", color="red", bold=True)
-        
-def package_exists(pkg: str, args: list, config: Config):
-    """Checks if a package exists"""
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
-    if not os.path.exists(packages_json):
-        update_packages(flags, config)
-
-    packages_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        packages_data = json.loads(f.read()).get("packages", [])
-
-    case = False
-    full_match = "full-match" in args
-    query = pkg
-    if "case" in args:
-        case = True
-    else:
-        query = pkg.lower()
-
-    for package in packages_data:
-        name = package.get("name", "")
-        n = name
-        if not case: n = name.lower()
-
-        res = query in n if not full_match else query == n
-        
-        if res: return True
-
-    return False
 
 def verify_package(repo_path: str, cache_dir: str, metadata: dict):
     "Verifies the package and takes in user input as well, uses ED22519 and SHA256"
@@ -287,8 +259,25 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
 
 def update_packages(args: list, config: Config):
     """Updates the package json file"""
+
+    url = PPI_PAGE + "packages.json"
     packages = os.path.join(BASE_DIR_DEF, "packages.json")
-    
+
+    with urllib.request.urlopen(url) as response:
+        remote_data = json.load(response)
+
+    needed = False
+    if not os.path.exists(packages):
+        needed = True
+
+    with open(packages, "r") as f:
+        local_data = json.load(f)
+
+    needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01"), "%Y-%m-%d") > datetime.strptime(local_data.get("modified", "1970-01-01"), "%Y-%m-%d") else False
+    if (not needed):
+        step("Package List up-to-date!", color="green", bold=True)
+        return None
+
     try:
         urllib.request.urlretrieve(PPI_PAGE + "packages.json", packages)
     except Exception as e:
@@ -297,11 +286,39 @@ def update_packages(args: list, config: Config):
 
     step("Synced Package List!", color="green", bold=True)
 
+def package_exists(pkg: str, args: list, config: Config):
+    """Checks if a package exists"""
+    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+    update_packages(args, config)
+
+    packages_data = {}
+    with open(packages_json, "r") as f:
+        f.seek(0)
+        packages_data = json.loads(f.read()).get("packages", [])
+
+    case = False
+    full_match = "full-match" in args
+    query = pkg
+    if "case" in args:
+        case = True
+    else:
+        query = pkg.lower()
+
+    for package in packages_data:
+        name = package.get("name", "")
+        n = name
+        if not case: n = name.lower()
+
+        res = query in n if not full_match else query == n
+        
+        if res: return True
+
+    return False
+
 def search_packages(queries: list, args: list, config: Config):
     """Searches for a package but via multiple queries"""
     packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
-    if not os.path.exists(packages_json):
-        update_packages([], config)
+    update_packages([], config)
 
     packages_data = {}
     with open(packages_json, "r") as f:
@@ -339,8 +356,7 @@ def search_packages(queries: list, args: list, config: Config):
 def search_package(query: str, args: list, config: Config):
     """Searches for a package but via single queries"""
     packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
-    if not os.path.exists(packages_json):
-        update_packages(flags, config)
+    update_packages(flags, config)
 
     packages_data = {}
     with open(packages_json, "r") as f:
@@ -398,8 +414,8 @@ def install_package(package: str, args: list, config: Config):
         os.mkdir(cache_dir)
     if not os.path.exists(install_dir):
         os.mkdir(install_dir)
-    if not os.path.exists(packages_json):
-        update_packages(args, config)
+
+    update_packages(args, config)
 
     jump(f"Syncing Package Lists")
     package_data = {}
@@ -495,6 +511,125 @@ def remove_package(args: list, config: Config, name: str):
 
     step(f"Package '{name}' removed successfully!", color="green", bold=True)
 
+def upgrade_package(package: str, args: list, config: Config):
+    """Updates a package"""
+    new_item(f"Upgrading {package}")
+
+    jump(f"Setting and Checking Directories")
+    download_dir = config.download_dir
+    cache_dir = config.cache_dir
+    install_dir = config.install_dir
+    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+
+    if not os.path.exists(download_dir):
+        os.mkdir(download_dir)
+    if not os.path.exists(cache_dir):
+        os.mkdir(cache_dir)
+    if not os.path.exists(install_dir):
+        os.mkdir(install_dir)
+    
+    update_packages(args, config)
+
+    jump(f"Syncing Package Lists")
+    package_data = {}
+    with open(packages_json, "r") as f:
+        f.seek(0)
+        package_data = json.loads(f.read()).get("packages", [])
+
+    if package_exists(package, ["case", "full-match"], config) != True:
+        step(f"No such package", status="Error", color="red", bold=True)
+        return None
+
+    found = False
+    for p in package_data:
+        name = p.get("name", "")
+        if package == name:
+            found = True
+            date_obj = datetime.strptime(p.get("update", "01-01-1970"), "%d-%m-%Y")
+            md = load_nfx_metadata(os.path.join(download_dir, package))
+            date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01"), "%Y-%m-%d")
+            if date_obj > date_obj2:
+                remove_package([], config, package)
+                if os.path.exists(os.path.join(cache_dir, package + ".zip")):
+                    os.remove(os.path.join(cache_dir, package + ".zip"))
+                if os.path.exists(os.path.join(cache_dir, package + ".zip.sig")):
+                    os.remove(os.path.join(cache_dir, package + ".zip.sig"))
+            elif date_obj == date_obj2:
+                step("Package is up to date", color="green", bold=True)
+                return None
+            else:
+                step("Package/Package_List data is corrupted!", status="Error", color="red", bold=True)
+                return None
+
+            new_item(f"Continuing Upgrade of {package}")   
+            break
+
+    if not found:
+        step(f"No such installed package: {package}", status="Error", color="red", bold=True)
+        return None
+
+    # fetch repo
+    jump(f"Fetching")
+    repo_path = fetch_repo(package, cache_dir, "local" not in args, package_data)
+    
+    # load nfx.json
+    jump(f"Loading Metadata")
+    metadata = load_nfx_metadata(repo_path)
+    metadata["DownloadPath"] = copy_to_downloads(repo_path, download_dir, metadata.get("Name", ""))
+
+    jump(f"Checking Conflicts")
+    for conflict in metadata.get("Conflicts", []):
+        if package_exists(conflict, ["case", "full-match"], config):
+            step(f"Could not install package since it conflicts with installed '{conflict}'", status="Error", color="red", bold=True)
+            return None
+
+    jump(f"Checking Dependencies")
+    dependencies = metadata.get("Dependencies", [])
+    if len(dependencies) > 0:
+        for package in packages:
+            if package_exists(package, ["case", "full-match"], config) != True:
+                step(f"No such package: {package}", status="Error", color="red", bold=True)
+                return None
+
+        MAX_THREADS = 5
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+            results = executor.map(
+                lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data),
+                packages
+            )
+
+        for pkg in packages:
+            install_package(pkg, args, config)
+
+        new_item(f"Continuing Installation of {package}")
+
+    jump(f"Verifying Dependencies")
+    for dep in dependencies:
+        if not package_exists(dep, ["case", "full-match"], config):
+            step(f"Could not install package since dependency '{dep}' is not installed", status="Error", color="red", bold=True)
+            return None
+
+    # Do verification tests
+    jump(f"Verifying")
+    if not verify_package(repo_path, cache_dir, metadata):
+        step("Could not install package since verification failed", status="Error", color="red", bold=True)
+        return None
+    
+    # run post install scripts from main package
+    jump(f"Running Post Install Scripts")
+    if metadata.get("PostInstall"):
+        step(f"Running post-install script: {metadata['PostInstall']}", status="Log")
+        run_post_install(os.path.join(metadata["DownloadPath"], metadata.get("PostInstall", [])))
+    
+    # install binaries
+    jump(f"Installing Binaries")
+    install_binaries(metadata, install_dir)
+
+    jump(f"Finishing Installation")
+    finish_download(metadata.get("Name", ""), metadata)
+    
+    step(f"Package '{repo_path}' installed successfully!", color="green", bold=True)
+
 def info_package(name: str, args: list, config: Config) -> tuple[dict, str]:
     download_dir = config.download_dir
     cache_dir = config.cache_dir
@@ -519,8 +654,8 @@ def install_packages(packages: list, args: list, config: Config):
         os.mkdir(cache_dir)
     if not os.path.exists(install_dir):
         os.mkdir(install_dir)
-    if not os.path.exists(packages_json):
-        update_packages(args, config)
+    
+    update_packages(args, config)
 
     package_data = {}
     with open(packages_json, "r") as f:
@@ -541,6 +676,10 @@ def install_packages(packages: list, args: list, config: Config):
 
     for pkg in packages:
         install_package(pkg, args, config)
+
+def upgrade_packages(packages: list, args: list, config: Config):
+    for pkg in packages: # cant do parallel here
+        upgrade_package(pkg, args, config)
 
 def remove_packages(packages: list, args: list, config: Config):
     MAX_THREADS = 5

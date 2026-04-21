@@ -14,6 +14,12 @@ from src.constants import *
 from src.config import *
 from src.downloader import *
 
+def exitH(ExitCode:Optional[int], *ExitMsg:Optional[object], seperator:Optional[str]=" ", endl:Optional[str]="\n", File:Optional[str]=None, Flush:bool=False, backgroundColorEnabled:bool=False, FontEnabled:bool=False, Font:TextFont=TextFont()) -> None:
+    if ExitMsg:
+        printH("Status: Exit. Exit Code -> ["+str(ExitCode)+"]; Message: ", *ExitMsg, seperator=seperator, endl=endl, File=File, Flush=Flush, backgroundColorEnabled=backgroundColorEnabled, FontEnabled=FontEnabled, Font=Font)
+
+    sys.exit(ExitCode)
+
 def print_commands(cmds:list[tuple[Union[dict[str, list[tuple]], str], str]]) -> None:
     for cmd, desc in cmds:
         if isinstance(cmd, dict):
@@ -85,6 +91,12 @@ def print_help() -> None:
             ]
         }, "Install one or more packages (all dependencies are installed paralelly)"),
         ("installs <packages>", "Install one or more packages in parallel"),
+        ({
+            "upgrade <pkg>": [
+                ("local", "It is a local-repo/URL")
+            ]
+        }, "Updates one or more packages (all dependencies are installed paralelly)"),
+        ("upgrades <packages>", "Updates one or more packages in sync"),
         ("remove <pkg>", "Removes a package"),
         ("removes <packages>", "Remove one or more packages in parallel"),
         ({
@@ -92,7 +104,8 @@ def print_help() -> None:
                 ("license", "Show it's license"),
                 ("author", "Show the author of the package"),
                 ("doc", "Show the documentation of the package"),
-                ("desc", "Show the description of the package")
+                ("desc", "Show the description of the package"),
+                ("modified", "Show the date the package was last modified")
             ]
         }, "Shows Information about the package"),
         ("update", "Updates the package list"),
@@ -261,59 +274,69 @@ def main(args:list[str]) -> None:
         overwrite = "overwrite" in flags
         generate_config(overwrite=overwrite)
     elif command == "install":
-        pkg = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         install_package(pkg, args_list, config)
     elif command == "installs":
         if len(args_list) <= 0:
-            Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         install_packages(args_list, flags, config)
+    elif command == "upgrade":
+        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        upgrade_package(pkg, args_list, config)
+    elif command == "upgrades":
+        if len(args_list) <= 0:
+            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        upgrade_packages(args_list, flags, config)
     elif command == "remove":
-        pkg = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         remove_package(flags, config, pkg)
     elif command == "removes":
         if len(args_list) <= 0:
-            Hout.exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         remove_packages(args_list, flags, config)
     elif command == "info":
-        loc = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        loc = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         md, pkg_path = info_package(loc, flags, config)
-        if len(flags) == 1:
-            args_list.append("author")
-            args_list.append("desc")
-
-        if "author" in flags:
+        if len(flags) == 0:
             printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-        if "desc" in flags:
             printH(f"Description: {md.get("Description", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-        if "license" in flags:
-            printH("License:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-            if os.path.exists(os.path.join(pkg_path, md.get("License", "LICENSE"))):
-                data = ""
-                with open(os.path.join(pkg_path, md.get("License", "LICENSE")), "r") as f:
-                    f.seek(0)
-                    data = f.read()
-                print(data)
-                print("\n\n")
-            else:
-                print("Not Found!\n\n")
-        if "doc" in flags:
-            printH("Documentation:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
-            if os.path.exists(os.path.join(pkg_path, md.get("Readme", "README.md"))):
-                data = ""
-                with open(os.path.join(pkg_path, md.get("Readme", "README.md")), "r") as f:
-                    f.seek(0)
-                    data = f.read()
-                print(data)
-                print("\n\n")
-            else:
-                print("Not Found!\n\n")
+            printH(f"Modified: {md.get("Build", {}).get("Date", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+        else:
+            if "author" in flags:
+                printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+            if "desc" in flags:
+                printH(f"Description: {md.get("Description", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+            if "license" in flags:
+                printH("License:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+                if os.path.exists(os.path.join(pkg_path, md.get("License", "LICENSE"))):
+                    data = ""
+                    with open(os.path.join(pkg_path, md.get("License", "LICENSE")), "r") as f:
+                        f.seek(0)
+                        data = f.read()
+                    print(data)
+                    print("\n\n")
+                else:
+                    print("Not Found!\n\n")
+            if "doc" in flags:
+                printH("Documentation:\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
+                if os.path.exists(os.path.join(pkg_path, md.get("Readme", "README.md"))):
+                    data = ""
+                    with open(os.path.join(pkg_path, md.get("Readme", "README.md")), "r") as f:
+                        f.seek(0)
+                        data = f.read()
+                    print(data)
+                    print("\n\n")
+                else:
+                    print("Not Found!\n\n")
+            if "modified" in flags:
+                printH(f"Modified: {md.get("Build", {}).get("Date", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
     elif command == "update":
         update_packages(flags, config)
     elif command == "searchs":
-        queries = args_list if len(args_list) > 0 else Hout.exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        queries = args_list if len(args_list) > 0 else exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         search_packages(queries, flags, config)
     elif command == "search":
-        query = args_list[0] if len(args_list) > 0 else Hout.exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        query = args_list[0] if len(args_list) > 0 else exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
         args_list.pop(0)
         search_package(query, flags, config)
     elif command == "clean":
