@@ -31,7 +31,7 @@
             "Name": "nfx",
             "Os": ["windows"],
             "Arch": ["x86_64"],
-            "Path": "bin/windows/x86_64/dist/nfx",
+            "Path": "bin/windows/x86_64/dist/nfx.exe",
             "Size": 0,
             "Sha256": "",
             "Executable": true

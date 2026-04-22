@@ -22,8 +22,8 @@
         "x86_64"
       ],
       "Path": "bin/linux/x86_64/dist/nfx",
-      "Size": 12534136,
-      "Sha256": "6024b46f6d4e9dc25c3c0e4ef1c835a6b28cef58a8cad769084a8f4dea268158",
+      "Size": 12533248,
+      "Sha256": "34b1aa96c7b87c401998825baf70772dddb110fc9934d3ead16902bf056fc17a",
       "Executable": true
     },
     {
@@ -34,9 +34,9 @@
       "Arch": [
         "x86_64"
       ],
-      "Path": "bin/windows/x86_64/dist/nfx",
-      "Size": 12541171,
-      "Sha256": "adf249f50df86be11fa952d154e0712dcd33bc603bce707631f052c218d80773",
+      "Path": "bin/windows/x86_64/dist/nfx.exe",
+      "Size": 12541332,
+      "Sha256": "08456951551338f402afdc1acf2dc1dc6085ea16a0c02a61719e0e8642ffaa8b",
       "Executable": true
     }
   ],

@@ -8,7 +8,7 @@ from phardwareitk.Extensions.HyperOut import *
 from src import *
 from src.config import *
 
-from src.constants import BASE_DIR_DEF
+from src.constants import BASE_DIR_DEF, SYSTEM
 
 from datetime import datetime
 
@@ -160,6 +160,20 @@ def install_binaries(metadata: dict, install_dir: str):
             src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
             dest_path = os.path.join(install_dir, bin_info.get("Name", ""))
             
+            if SYSTEM == "Windows" and not os.path.exists(src_path):
+                root, ext = os.path.splitext(src_path)
+                if ext.lower() != ".exe":
+                    alt_path = src_path + ".exe"
+                    if os.path.exists(alt_path):
+                        src_path = alt_path
+                root, ext = os.path.splitext(dest_path)
+                if ext.lower() != ".exe":
+                    alt_path = dest_path + ".exe"
+                    if os.path.exists(alt_path):
+                        dest_path = alt_path
+            src_path = os.path.normcase(src_path)
+            dest_path = os.path.normcase(dest_path)
+
             if os.path.exists(dest_path):
                 os.remove(dest_path)
             
@@ -188,6 +202,20 @@ def remove_binaries(metadata: dict, install_dir: str):
             src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
             dest_path = os.path.join(install_dir, bin_info.get("Name", "")) 
             
+            if SYSTEM == "Windows" and not os.path.exists(src_path):
+                root, ext = os.path.splitext(src_path)
+                if ext.lower() != ".exe":
+                    alt_path = src_path + ".exe"
+                    if os.path.exists(alt_path):
+                        src_path = alt_path
+                root, ext = os.path.splitext(dest_path)
+                if ext.lower() != ".exe":
+                    alt_path = dest_path + ".exe"
+                    if os.path.exists(alt_path):
+                        dest_path = alt_path
+            src_path = os.path.normcase(src_path)
+            dest_path = os.path.normcase(dest_path)
+
             os.unlink(dest_path)
             
             deleted_binaries += 1
@@ -213,20 +241,25 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
         step("Package lost its cached zipfile!", status="Error", color="red", bold=True)
         return False
     if (os.path.exists(sigpath)):
-        result = subprocess.run(
-            [
-                "ssh-keygen",
-                "-Y", "verify",
-                "-f", os.path.join(metadata["DownloadPath"], metadata.get("Build", {}).get("AllowedSigners", "")),
-                "-I", metadata.get("Build", {}).get("SignatureIdentity", ""),
-                "-n", "file",
-                "-s", sigpath,
-            ],
-            input=open(zippath, "rb").read(),
-            capture_output=True,
-        )
-        if result.returncode != 0:
-            step("Package is tampered with (Risk: Very High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+        try:
+            result = subprocess.run(
+                [
+                    "ssh-keygen",
+                    "-Y", "verify",
+                    "-f", os.path.join(metadata["DownloadPath"], metadata.get("Build", {}).get("AllowedSigners", "")),
+                    "-I", metadata.get("Build", {}).get("SignatureIdentity", ""),
+                    "-n", "file",
+                    "-s", sigpath,
+                ],
+                input=open(zippath, "rb").read(),
+                capture_output=True,
+            )
+            if result.returncode != 0:
+                step("Package is tampered with (Risk: Very High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+                if input("").lower() not in ("y", "yes", "yeah", "yea"):
+                    return False
+        except Exception as e:
+            step("'ssh-keygen' was not found, hence 'ZIP' verification is skipped (Risk: Medium), continue (y/N): ", status="Input", color="yellow", bold=True)
             if input("").lower() not in ("y", "yes", "yeah", "yea"):
                 return False
     else:
@@ -245,11 +278,19 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
         if os_name in bin_os and arch in bin_arch:
             src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
             
+            if SYSTEM == "Windows" and not os.path.exists(src_path):
+                root, ext = os.path.splitext(src_path)
+                if ext.lower() != ".exe":
+                    alt_path = src_path + ".exe"
+                    if os.path.exists(alt_path):
+                        src_path = alt_path
+
+            src_path = os.path.normcase(src_path)
             if not os.path.exists(src_path):
-                step("Package lost its binaries!", status="Error", color="red", bold=True)
+                step(f"Package lost its binaries! ({src_path})", status="Error", color="red", bold=True)
                 return False
             hash_ = sha256sum_file(src_path)
-            if hash_ != bin_info.get("Sha256", 0):
+            if hash_ != bin_info.get("Sha256", ""):
                 step("Package has invalid sha256 hashed binaries (Risk: Medium), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
                 if input("").lower() not in ("y", "yes", "yeah", "yea"):
                     return False
@@ -269,11 +310,11 @@ def update_packages(args: list, config: Config):
     needed = False
     if not os.path.exists(packages):
         needed = True
+    else:
+        with open(packages, "r") as f:
+            local_data = json.load(f)
 
-    with open(packages, "r") as f:
-        local_data = json.load(f)
-
-    needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01"), "%Y-%m-%d") > datetime.strptime(local_data.get("modified", "1970-01-01"), "%Y-%m-%d") else False
+        needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01"), "%Y-%m-%d") > datetime.strptime(local_data.get("modified", "1970-01-01"), "%Y-%m-%d") else False
     if (not needed):
         step("Package List up-to-date!", color="green", bold=True)
         return None
@@ -545,7 +586,7 @@ def upgrade_package(package: str, args: list, config: Config):
         name = p.get("name", "")
         if package == name:
             found = True
-            date_obj = datetime.strptime(p.get("update", "01-01-1970"), "%d-%m-%Y")
+            date_obj = datetime.strptime(p.get("update", "1970-01-01"), "%Y-%m-%d")
             md = load_nfx_metadata(os.path.join(download_dir, package))
             date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01"), "%Y-%m-%d")
             if date_obj > date_obj2:
