@@ -19,7 +19,7 @@
         "x86_64"
       ],
       "Executable": true,
-      "Name": "nfx",
+      "Name": "nfx.exe",
       "Os": [
         "windows"
       ],
@@ -30,7 +30,7 @@
   ],
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
-    "Date": "2026-04-22",
+    "Date": "2026-04-23",
     "SignatureIdentity": "pheonix-nfx"
   },
   "Conflicts": [],

@@ -10,7 +10,7 @@
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
     "SignatureIdentity": "pheonix-nfx",
-    "Date": "2026-04-22"
+    "Date": "2026-04-23"
   },
   "Binaries": [
     {
@@ -27,7 +27,7 @@
       "Executable": true
     },
     {
-      "Name": "nfx",
+      "Name": "nfx.exe",
       "Os": [
         "windows"
       ],

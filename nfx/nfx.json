@@ -28,7 +28,7 @@
             "Executable": true
         },
         {
-            "Name": "nfx",
+            "Name": "nfx.exe",
             "Os": ["windows"],
             "Arch": ["x86_64"],
             "Path": "bin/windows/x86_64/dist/nfx.exe",
