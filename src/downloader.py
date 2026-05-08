@@ -4,6 +4,7 @@ import urllib.request
 import concurrent.futures
 
 from phardwareitk.Extensions import *
+import phardwareitk.CLI.cliToolKit as ctk
 from phardwareitk.Extensions.HyperOut import *
 from src import *
 from src.config import *
@@ -16,11 +17,61 @@ EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 
+CONTROL_DICT = {"updated packages": False}
+
+class ProgressBar:
+    """Progress Bar class"""
+    def __init__(self, start_val:int=0, end_value:int=100, completed_color:str="white", remaining_color:str="white", completed_char:str="%", remaining_char:str="-") -> None:
+        self.cur_val = start_val
+        self.end_val = end_value
+        self.ccolor = completed_color
+        self.rcolor = remaining_color
+        self.cchar = completed_char
+        self.rchar = remaining_char
+        self.chars = 25
+        self.spos:tuple[int, int] = ctk.Cursor.CurrentCursorPosition()
+
+    def start(self):
+        ctk.Text.WriteText(self.rchar*self.chars, Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.rcolor)))
+
+    def update(self, inc:int):
+        self.cur_val += inc
+        if self.cur_val > self.end_val:
+            self.cur_val = self.end_val
+        percentage = self.cur_val / self.end_val
+        chars = int(percentage * self.chars)
+
+        curpos = ctk.Cursor.CurrentCursorPosition()
+        ctk.Cursor.MoveCursor(self.spos[0], self.spos[1])
+        ctk.Text.WriteText(self.cchar*chars, Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.ccolor)))
+        ctk.Text.WriteText(self.rchar*(self.chars - chars), Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.rcolor)))
+        ctk.Cursor.MoveCursor(self.curpos[0], self.curpos[1])
+
+    def set(self, value: int):
+        self.cur_val = value
+        self.update(0)
+
+    def finish(self):
+        self.set(self.end_val)
+        print()
+
 def step(msg, status=None, color="white", bold=False):
     status_str = ""
     if status:
         status_str = f"[{status}]"
     printH(f"    -> {msg:<20} {status_str}", FontEnabled=True, Font=TextFont(font_color=Color(color),Bold=bold))
+
+def step_desc(msg, status=None, color="white", bold=False):
+    status_str = ""
+    if status:
+        status_str = f"[{status}]"
+    printH(f"            {msg:<20} {status_str}", FontEnabled=True, Font=TextFont(font_color=Color(color),Bold=bold))
+
+def step_nitem(msg, status=None, color="white", bold=False):
+    status_str = ""
+    if status:
+        status_str = f"[{status}]"
+    printH(f"{msg:<20} {status_str}", FontEnabled=True, Font=TextFont(font_color=Color(color),Bold=bold))
 
 def jump(msg, status=None, color="white", bold=False):
     status_str = ""
@@ -42,6 +93,51 @@ def sha256sum_file(path: str):
             h.update(chunk)
     
     return h.hexdigest()
+
+def get_dir_size(path: str) -> int:
+    total = 0
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        total += entry.stat().st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        total += get_dir_size(entry.path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+def download_file(url, path):
+    with urllib.request.urlopen(url) as response:
+        total = int(response.getheader("Content-Length", 0))
+
+        pb = ProgressBar(
+            end_value=total,
+            completed_color="green",
+            remaining_color="grey"
+        )
+
+        pb.start()
+
+        downloaded = 0
+
+        with open(path, "wb") as f:
+            while True:
+                chunk = response.read(8192)
+
+                if not chunk:
+                    break
+
+                f.write(chunk)
+
+                downloaded += len(chunk)
+
+                pb.set(downloaded)
+
+        pb.finish()
 
 def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict) -> str:
     """
@@ -89,7 +185,7 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict) -> str:
                 os._exit(-5)
         else:
             try:
-                urllib.request.urlretrieve(repo_url + package_json[index].get("zipfile", "Error404NotFound"), zippath)
+                download_file(repo_url + package_json[index].get("zipfile", "Error404NotFound"), zippath)
                 with zipfile.ZipFile(zippath, 'r') as zip_ref:
                     zip_ref.extractall(target_path) # Keep downloaded cache
             except zipfile.BadZipFile:
@@ -105,7 +201,7 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict) -> str:
 
             if package_json[index].get("signed_zipfile", "") != "":
                 try:
-                    urllib.request.urlretrieve(repo_url + package_json[index].get("signed_zipfile", "Error404NotFound"), sigpath)
+                    download_file(repo_url + package_json[index].get("signed_zipfile", "Error404NotFound"), sigpath)
                 except Exception as e:
                     step(f"Error Downloading the file '{repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")}' to '{sigpath}'", status="Error", color="red", bold=True)
                     os.rmdir(target_path)
@@ -297,10 +393,10 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict):
     
     return True
 
-
 def update_packages(args: list, config: Config):
     """Updates the package json file"""
-
+    if CONTROL_DICT["updated packages"]:
+        return None
     url = PPI_PAGE + "packages.json"
     packages = os.path.join(BASE_DIR_DEF, "packages.json")
 
@@ -314,9 +410,10 @@ def update_packages(args: list, config: Config):
         with open(packages, "r") as f:
             local_data = json.load(f)
 
-        needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01"), "%Y-%m-%d") > datetime.strptime(local_data.get("modified", "1970-01-01"), "%Y-%m-%d") else False
+        needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") > datetime.strptime(local_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") else False
     if (not needed):
         step("Package List up-to-date!", color="green", bold=True)
+        CONTROL_DICT["updated packages"] = True
         return None
 
     try:
@@ -326,6 +423,77 @@ def update_packages(args: list, config: Config):
         os._exit(-5)
 
     step("Synced Package List!", color="green", bold=True)
+    CONTROL_DICT["updated packages"] = True
+
+def get_all_packages(config: Config, sort_mode:str="alpha") -> tuple[list[str], list[int], list[float], list[str], list[int], list[float]]:
+    """
+    Provides all packages
+    
+    Returns ([Downloaded Packages], [Downloaded Packages Size], [Downloaded Packages Time], [Installed Packages], [Installed Packages Size], [Installed Packages Time])
+    """
+    download_dir = config.download_dir
+    install_dir = config.install_dir
+
+    downloaded = []
+    if os.path.exists(download_dir):
+        for item in os.listdir(download_dir):
+            path = os.path.join(download_dir, item)
+            if os.path.isdir(path):
+                downloaded.append((
+                    item,
+                    get_dir_size(path),
+                    os.path.getmtime(path)
+                ))
+    else:
+        step("No download dir found!", status="Warning", color="yellow", bold=True)
+
+    installed = []
+    if os.path.exists(install_dir):
+        for item in os.listdir(install_dir):
+            path = os.path.join(install_dir, item)
+            if os.path.islink(path):
+                installed.append((
+                    item,
+                    os.path.getsize(path),
+                    os.path.getmtime(path)
+                ))
+    else:
+        step("No installation dir found!", status="Warning", color="yellow", bold=True)
+
+    if sort_mode == "alpha":
+        key_fn = lambda x: x[0].lower()
+        reverse = False
+    elif sort_mode == "rev-alpha":
+        key_fn = lambda x: x[0].lower()
+        reverse = True
+    elif sort_mode == "time":
+        key_fn = lambda x: x[2]
+        reverse = False
+    elif sort_mode == "size":
+        key_fn = lambda x: x[1]
+        reverse = False
+    elif sort_mode == "rev-time":
+        key_fn = lambda x: x[2]
+        reverse = True
+    elif sort_mode == "rev-size":
+        key_fn = lambda x: x[1]
+        reverse = True
+    else:
+        key_fn = None
+
+    if key_fn:
+        downloaded.sort(key=key_fn, reverse=reverse)
+        installed.sort(key=key_fn, reverse=reverse)
+
+    d_names  = [x[0] for x in downloaded]
+    d_sizes  = [x[1] for x in downloaded]
+    d_times  = [x[2] for x in downloaded]
+
+    i_names  = [x[0] for x in installed]
+    i_sizes  = [x[1] for x in installed]
+    i_times  = [x[2] for x in installed]
+
+    return d_names, d_sizes, d_times, i_names, i_sizes, i_times
 
 def package_exists(pkg: str, args: list, config: Config):
     """Checks if a package exists"""
@@ -356,9 +524,34 @@ def package_exists(pkg: str, args: list, config: Config):
 
     return False
 
+def package_installed(pkg: str, args: list, config: Config):
+    """Checks if a package is installed"""
+    dpkgs, _, __, ___, _____, ______ = get_all_packages(config)
+
+    case = False
+    full_match = "full-match" in args
+    query = pkg
+    if "case" in args:
+        case = True
+    else:
+        query = pkg.lower()
+
+    for package in dpkgs:
+        n = package
+        if not case: n = package.lower()
+
+        res = query in n if not full_match else query == n
+        
+        if res: return True
+
+    return False
+
 def search_packages(queries: list, args: list, config: Config):
     """Searches for a package but via multiple queries"""
+    new_item("Searching for packages")
     packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+
+    jump("Updating Package List")
     update_packages([], config)
 
     packages_data = {}
@@ -366,18 +559,19 @@ def search_packages(queries: list, args: list, config: Config):
         f.seek(0)
         packages_data = json.loads(f.read()).get("packages", [])
     
+    printed = 0
     if "all" in args:
+        jump("Searching all packages")
         for package in packages_data:
             name = package.get("name", "")
-            printH(
-                f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "<No Description>")}",
-                FontEnabled=True,
-                Font = TextFont(
-                    font_color = Color("cyan"),
-                    Bold = True
-                )
-            )
+            printed += 1
+            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+        if printed == 0:
+            step("No Packages found!", status="Warning", color="yellow", bold=True)
         return None
+    else:
+        jump(f"Searching using queries {", ".join(queries)}")
 
     for package in packages_data:
         name = package.get("name", "")
@@ -385,37 +579,40 @@ def search_packages(queries: list, args: list, config: Config):
             q = query if "case" in args else query.lower()
             n = name if "case" in args else name.lower()
             if q in n:
-                printH(
-                    f"{name} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "No Description")}",
-                    FontEnabled=True,
-                    Font = TextFont(
-                        font_color = Color("cyan"),
-                        Bold = True
-                    )
-                )
+                printed += 1
+                step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+                step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+
+    if printed == 0:
+        step("No Packages found!", status="Warning", color="yellow", bold=True)
 
 def search_package(query: str, args: list, config: Config):
     """Searches for a package but via single queries"""
+    new_item("Searching for package")
+
     packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
-    update_packages(flags, config)
+
+    jump("Updating Package List")
+    update_packages([], config)
 
     packages_data = {}
     with open(packages_json, "r") as f:
         f.seek(0)
         packages_data = json.loads(f.read()).get("packages", [])
 
+    printed = 0
     if "all" in args:
+        jump("Searching all packages")
         for package in packages_data:
             name = package.get("name", "")
-            printH(
-                f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "<No Description>")}",
-                FontEnabled=True,
-                Font = TextFont(
-                    font_color = Color("cyan"),
-                    Bold = True
-                )
-            )
+            printed += 1
+            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+        if printed == 0:
+            step("No Packages found!", status="Warning", color="yellow", bold=True)
         return None
+    else:
+        jump(f"Searching using query {query}")
 
     case = False
     if "case" in args:
@@ -430,14 +627,12 @@ def search_package(query: str, args: list, config: Config):
             n = name.lower()
         
         if query in n:
-            printH(
-                f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:\n\t{package.get("description", "<No Description>")}",
-                FontEnabled=True,
-                Font = TextFont(
-                    font_color = Color("cyan"),
-                    Bold = True
-                )
-            )
+            printed += 1
+            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+
+    if printed == 0:
+        step("No Packages found!", status="Warning", color="yellow", bold=True)
 
 def install_package(package: str, args: list, config: Config):
     """Installs a package"""
@@ -456,16 +651,19 @@ def install_package(package: str, args: list, config: Config):
     if not os.path.exists(install_dir):
         os.mkdir(install_dir)
 
+    jump(f"Updating Package List")
     update_packages(args, config)
 
-    jump(f"Syncing Package Lists")
     package_data = {}
     with open(packages_json, "r") as f:
         f.seek(0)
         package_data = json.loads(f.read()).get("packages", [])
 
-    if package_exists(package, ["case", "full-match"], config) != True:
+    if not package_exists(package, ["case", "full-match"], config):
         step(f"No such package", status="Error", color="red", bold=True)
+        return None
+    elif package_installed(package, ["case", "full-match"], config):
+        step(f"Package already installed, use 'upgrade' instead!", status="Warning", color="yellow", bold=True)
         return None
 
     # fetch repo
@@ -479,7 +677,7 @@ def install_package(package: str, args: list, config: Config):
 
     jump(f"Checking Conflicts")
     for conflict in metadata.get("Conflicts", []):
-        if package_exists(conflict, ["case", "full-match"], config):
+        if package_installed(conflict, ["case", "full-match"], config):
             step(f"Could not install package since it conflicts with installed '{conflict}'", status="Error", color="red", bold=True)
             return None
 
@@ -505,7 +703,7 @@ def install_package(package: str, args: list, config: Config):
 
     jump(f"Verifying Dependencies")
     for dep in dependencies:
-        if not package_exists(dep, ["case", "full-match"], config):
+        if not package_installed(dep, ["case", "full-match"], config):
             step(f"Could not install package since dependency '{dep}' is not installed", status="Error", color="red", bold=True)
             return None
 
@@ -569,15 +767,16 @@ def upgrade_package(package: str, args: list, config: Config):
     if not os.path.exists(install_dir):
         os.mkdir(install_dir)
     
+    jump(f"Updating Package List")
     update_packages(args, config)
 
-    jump(f"Syncing Package Lists")
     package_data = {}
     with open(packages_json, "r") as f:
         f.seek(0)
         package_data = json.loads(f.read()).get("packages", [])
 
-    if package_exists(package, ["case", "full-match"], config) != True:
+    jump("Checking Package Existence")
+    if not package_installed(package, ["case", "full-match"], config):
         step(f"No such package", status="Error", color="red", bold=True)
         return None
 
@@ -586,9 +785,9 @@ def upgrade_package(package: str, args: list, config: Config):
         name = p.get("name", "")
         if package == name:
             found = True
-            date_obj = datetime.strptime(p.get("update", "1970-01-01"), "%Y-%m-%d")
+            date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
             md = load_nfx_metadata(os.path.join(download_dir, package))
-            date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01"), "%Y-%m-%d")
+            date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
             if date_obj > date_obj2:
                 remove_package([], config, package)
                 if os.path.exists(os.path.join(cache_dir, package + ".zip")):
@@ -620,7 +819,7 @@ def upgrade_package(package: str, args: list, config: Config):
 
     jump(f"Checking Conflicts")
     for conflict in metadata.get("Conflicts", []):
-        if package_exists(conflict, ["case", "full-match"], config):
+        if package_installed(conflict, ["case", "full-match"], config):
             step(f"Could not install package since it conflicts with installed '{conflict}'", status="Error", color="red", bold=True)
             return None
 
@@ -646,7 +845,7 @@ def upgrade_package(package: str, args: list, config: Config):
 
     jump(f"Verifying Dependencies")
     for dep in dependencies:
-        if not package_exists(dep, ["case", "full-match"], config):
+        if not package_installed(dep, ["case", "full-match"], config):
             step(f"Could not install package since dependency '{dep}' is not installed", status="Error", color="red", bold=True)
             return None
 
@@ -684,6 +883,9 @@ def info_package(name: str, args: list, config: Config) -> tuple[dict, str]:
     return metadata, os.path.join(download_dir, name)
 
 def install_packages(packages: list, args: list, config: Config):
+    new_item("Installing Packages")
+
+    jump("Checking and Setting directories")
     download_dir = config.download_dir
     cache_dir = config.cache_dir
     install_dir = config.install_dir
@@ -696,6 +898,7 @@ def install_packages(packages: list, args: list, config: Config):
     if not os.path.exists(install_dir):
         os.mkdir(install_dir)
     
+    jump("Updating Package List")
     update_packages(args, config)
 
     package_data = {}
@@ -703,18 +906,24 @@ def install_packages(packages: list, args: list, config: Config):
         f.seek(0)
         package_data = json.loads(f.read()).get("packages", [])
 
+    jump("Checking Packages")
     for package in packages:
-        if package_exists(package, ["case", "full-match"], config) != True:
-            printH(f"No such package: {package}", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        if not package_exists(package, ["case", "full-match"], config):
+            step(f"No such package: {package}", status="Error", color="red", bold=True)
             return None
+        elif package_installed(package, ["case", "full-match"], config):
+            step(f"Package already installed: {package} try using 'upgrades' instead (skipping)", status="Warning", color="yellow", bold=True)
+            packages.pop(packages.index(package))
 
     MAX_THREADS = 5
+    jump("Fetching Packages")
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         results = executor.map(
             lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data),
             packages
         )
 
+    jump("Installing")
     for pkg in packages:
         install_package(pkg, args, config)
 

@@ -1,6 +1,7 @@
 """Main file"""
 
 import os, sys, site
+from datetime import datetime
 
 import shlex
 
@@ -14,48 +15,48 @@ from src.constants import *
 from src.config import *
 from src.downloader import *
 
-def exitH(ExitCode:Optional[int], *ExitMsg:Optional[object], seperator:Optional[str]=" ", endl:Optional[str]="\n", File:Optional[str]=None, Flush:bool=False, backgroundColorEnabled:bool=False, FontEnabled:bool=False, Font:TextFont=TextFont()) -> None:
+def exitH(ExitCode:Optional[int], *ExitMsg:Optional[object]) -> None:
     if ExitMsg:
-        printH("Status: Exit. Exit Code -> ["+str(ExitCode)+"]; Message: ", *ExitMsg, seperator=seperator, endl=endl, File=File, Flush=Flush, backgroundColorEnabled=backgroundColorEnabled, FontEnabled=FontEnabled, Font=Font)
+        step_nitem("".join(ExitMsg), status="Error", color="red", bold=True)
 
     sys.exit(ExitCode)
+
+def format_size(size_bytes: int) -> str:
+    if size_bytes < 0:
+        raise ValueError("size_bytes must be non-negative")
+
+    units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    size = float(size_bytes)
+
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.2f} {unit}"
+        size /= 1024
 
 def print_commands(cmds:list[tuple[Union[dict[str, list[tuple]], str], str]]) -> None:
     for cmd, desc in cmds:
         if isinstance(cmd, dict):
             for main_cmd, subcmds in cmd.items():
-                Hout.printH(
+                print(
                     f"{main_cmd}",
-                    f"\t{desc}",
-                    seperator="\n",
-                    FontEnabled=True,
-                    Flush=True,
-                    Font=TextFont(
-                        font_color=Color("cyan")
-                    )
+                    f"    --> {desc}",
+                    sep="\n"
                 )
+                if len(subcmds) > 0:
+                    print("        Subcommands:")
                 for subcmd, subdesc in subcmds:
-                    Hout.printH(
-                        f"\t{subcmd}",
-                        f"\t\t{subdesc}",
-                        seperator="\n",
-                        FontEnabled=True,
-                        Flush=True,
-                        Font=TextFont(
-                            font_color=Color("cyan"),
-                            Italic=True
-                        )
+                    print(
+                        f"    ==> {subcmd}",
+                        f"        --> {subdesc}",
+                        sep="\n"
                     )
         else:
-            Hout.printH(
+            print(
                 f"{cmd}",
-                f"\t{desc}",
-                seperator="\n",
-                FontEnabled=True,
-                Flush=True,
-                Font=TextFont(
-                    font_color=Color("cyan")
-                )
+                f"    --> {desc}",
+                sep="\n"
             )
 
 def print_help() -> None:
@@ -90,13 +91,23 @@ def print_help() -> None:
                 ("local", "It is a local-repo/URL")
             ]
         }, "Install one or more packages (all dependencies are installed paralelly)"),
-        ("installs <packages>", "Install one or more packages in parallel"),
+        ({
+            "installs <packages>": [
+                ("local", "They are a local-repo/URL")
+            ]
+        }, "Install one or more packages in parallel"),
         ({
             "upgrade <pkg>": [
-                ("local", "It is a local-repo/URL")
+                ("local", "It is a local-repo/URL"),
+                ("all", "Upgrade all packages in sync (Downloaded packages)")
             ]
-        }, "Updates one or more packages (all dependencies are installed paralelly)"),
-        ("upgrades <packages>", "Updates one or more packages in sync"),
+        }, "Updates one packages (all dependencies are installed paralelly)"),
+        ({
+            "upgrades <packages>": [
+                ("local", "They are a local-repo/URL"),
+                ("all", "Upgrade all packages in sync (Downloaded packages)")
+            ]
+        }, "Updates one or more packages in sync (all dependencies are installed paralelly)"),
         ("remove <pkg>", "Removes a package"),
         ("removes <packages>", "Remove one or more packages in parallel"),
         ({
@@ -107,9 +118,16 @@ def print_help() -> None:
                 ("desc", "Show the description of the package"),
                 ("modified", "Show the date the package was last modified")
             ]
-        }, "Shows Information about the package"),
+        }, "Shows Information about installed packages"),
+        ({
+            "get-packages": [
+                ("max-count=<number>", "Specify the maxiumum packages to display"),
+                ("sort=<mode>", "Specify Sort mode, Modes: alpha (default), rev-alpha, time, rev-time, size, rev-size")
+            ]
+        }, "Shows all downloaded packages"),
         ("update", "Updates the package list"),
-        ("clean", "Clears cache"),
+        ("cache-size", "Shows total cache size"),
+        ("cache-clean", "Clears cache"),
         ({
             "searchs <queries>": [
                 ("all", "Just show all, ignore the query"),
@@ -161,24 +179,20 @@ def print_usage() -> None:
 
 def generate_config(overwrite: bool = False):
     """Generate default config.json for NFX"""
+    new_item("Generating config")
+    jump("Checking config")
+
     config_path = CONFIG_PATH_DEF
     if os.path.exists(config_path) and not overwrite:
-        HyperOut.printH(f"Config already exists at {config_path}. Use overwrite arg to regenerate.", FontEnabled=True, Flush=True, Font=TextFont(
-            font_color=Color("red"),
-            Bold=True
-        ))
+        step(f"Config already exists at {config_path}. Use overwrite arg to regenerate.", color="red", status="Error", bold=True)
         return
 
+    new_item("Saving Config")
     default_config = Config()
     default_config.save(config_path)
 
-    Hout.printH(
-        "Default configuration generated successfully!",
-        f"Path: {config_path}",
-        seperator="\n",
-        FontEnabled=True,
-        Font=TextFont(font_color=Color("green"), Bold=True)
-    )
+    step("Default configuration generated successfully!", color="green", bold=True)
+    step_desc(f"Path: {config_path}", color="green", bold=False)
 
 def show_config() -> None:
     """Prints current configuration"""
@@ -253,9 +267,9 @@ def main(args:list[str]) -> None:
     
     posix = parse_posix_args(args)
 
-    command = posix["command"]
-    args_list = posix["args"]
-    flags = posix["flags"]
+    command: str = posix["command"]
+    args_list: list = posix["args"]
+    flags: set = posix["flags"]
 
     config = Config.load()
 
@@ -274,28 +288,37 @@ def main(args:list[str]) -> None:
         overwrite = "overwrite" in flags
         generate_config(overwrite=overwrite)
     elif command == "install":
-        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
         install_package(pkg, args_list, config)
     elif command == "installs":
         if len(args_list) <= 0:
-            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            exitH(-41, "No Packages Specified!")
         install_packages(args_list, flags, config)
     elif command == "upgrade":
-        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        upgrade_package(pkg, args_list, config)
+        pkg = None
+        if "all" not in flags:
+            pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
+            upgrade_package(pkg, flags, config)
+        else:
+            downloaded, _, __, ___, _____, ______ = get_all_packages(config)
+            upgrade_packages(downloaded, flags, config)
     elif command == "upgrades":
-        if len(args_list) <= 0:
-            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        upgrade_packages(args_list, flags, config)
+        if len(args_list) <= 0 and "all" not in flags:
+            exitH(-41, "No Packages Specified!")
+        elif "all" in flags:
+            downloaded, _, __, ___, _____, ______ = get_all_packages(config)
+            upgrade_packages(downloaded, flags, config)
+        else:
+            upgrade_packages(args_list, flags, config)
     elif command == "remove":
-        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
         remove_package(flags, config, pkg)
     elif command == "removes":
         if len(args_list) <= 0:
-            exitH(-41, "No Packages Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+            exitH(-41, "No Packages Specified!")
         remove_packages(args_list, flags, config)
     elif command == "info":
-        loc = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        loc = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
         md, pkg_path = info_package(loc, flags, config)
         if len(flags) == 0:
             printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
@@ -331,23 +354,63 @@ def main(args:list[str]) -> None:
             if "modified" in flags:
                 printH(f"Modified: {md.get("Build", {}).get("Date", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
     elif command == "update":
+        new_item("Updating Package List")
+        jump("Syncing Package List")
         update_packages(flags, config)
     elif command == "searchs":
-        queries = args_list if len(args_list) > 0 else exitH(-41, "No Queries Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+        queries = []
+        if "all" not in flags:
+            queries = args_list if len(args_list) > 0 else exitH(-41, "No Queries Specified!")
         search_packages(queries, flags, config)
     elif command == "search":
-        query = args_list[0] if len(args_list) > 0 else exitH(-41, "No Query Specified!", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
-        args_list.pop(0)
+        query = ""
+        if "all" not in flags:
+            query = args_list[0] if len(args_list) > 0 else exitH(-41, "No Query Specified!")
         search_package(query, flags, config)
-    elif command == "clean":
-        shutil.rmtree(config.cache_dir)
-        printH("Cleared Cache", FontEnabled=True, Font=TextFont(font_color=Color("green"),Bold=True))
+    elif command == "get-packages":
+        new_item("Getting Packages")
+        
+        max_count = -1
+        for v in flags:
+            if "max-count=" in v:
+                c = v.replace("max-count=", "")
+                if not str(c).isdigit():
+                    exitH(-42, f"'{c}' is not a number!")
+                if not str(c) == "":
+                    max_count = int(c)
+
+        sort = "alpha"
+        for v in flags:
+            if "sort=" in v:
+                sort = v.replace("sort=", "")
+                if not sort in ["alpha", "rev-alpha", "time", "rev-time", "size", "rev-size"]:
+                    exitH(-42, "sort must be either one of - alpha, rev-alpha, time, rev-time, size, rev-size")
+        
+        downloaded, dsize, dtime, _, __, ___ = get_all_packages(config, sort_mode=sort)
+
+        jump("Installed Packages")
+        if (len(downloaded) == 0):
+            step("No Packages Exist", color="yellow", bold=True, status="Warning")
+        else:
+            for i, v in enumerate(downloaded):
+                if i + 1 > max_count and max_count > 0: break
+                step(f"{v} (Size: {format_size(dsize[i])}) at {datetime.fromtimestamp(dtime[i])}", color="green", bold=True)
+    elif command == "cache-size":
+        new_item("Getting Cache Size")
+        if not os.path.exists(config.cache_dir):
+            step("No Cache Exists!", color="green", bold=True)
+        else:
+            step("Cache Size: " + format_size(get_dir_size(config.cache_dir)), color="green", bold=True)
+    elif command == "cache-clean":
+        new_item("Clearing Cache")
+        if not os.path.exists(config.cache_dir):
+            step("No Cache Exists", color="green", bold=True)
+        else:
+            jump("Removing Cache Directory and cleaning cache")
+            shutil.rmtree(config.cache_dir)
+            step("Cleared Cache", color="green", bold=True)
     else:
-        Hout.printH(f"Unknown Command - {command} {" ".join(args_list)}", Flush=True, FontEnabled=True, Font=TextFont(
-            font_color=Color("red"),
-            Bold=True
-        ))
-        os._exit(-1)
+        exitH(-1, f"Unknown Command - {command}")
 
 if __name__ == "__main__":
     import sys
