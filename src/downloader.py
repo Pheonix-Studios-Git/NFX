@@ -13,46 +13,76 @@ from src.constants import BASE_DIR_DEF, SYSTEM
 
 from datetime import datetime
 
+import termios
+import tty
+
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 
 CONTROL_DICT = {"updated packages": False}
 
+
+def CurrentCursorPosition():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        sys.stdout.write('\x1b[6n')
+        sys.stdout.flush()
+        response = ""
+
+        while True:
+            ch = sys.stdin.read(1)
+            response += ch
+
+            if ch == 'R':
+                break
+
+        if response.startswith('\x1b[') and response.endswith('R'):
+            y, x = response[2:-1].split(';')
+            return int(y), int(x)
+
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    return 0, 0
+
 class ProgressBar:
-    """Progress Bar class"""
-    def __init__(self, start_val:int=0, end_value:int=100, completed_color:str="white", remaining_color:str="white", completed_char:str="%", remaining_char:str="-") -> None:
-        self.cur_val = start_val
+    def __init__(self, end_value:int=100, width:int=25, completed_char:str="#", remaining_char:str="-", prefix:str="", extended:bool=False, completed_color:str="", remaining_color:str="", other_color:str=""):
         self.end_val = end_value
-        self.ccolor = completed_color
-        self.rcolor = remaining_color
+        self.width = width
         self.cchar = completed_char
         self.rchar = remaining_char
-        self.chars = 25
-        self.spos:tuple[int, int] = ctk.Cursor.CurrentCursorPosition()
+        self.cur_val = 0
+        self.prefix = prefix
+        self.extended = extended
+        self.ccolor = completed_color
+        self.rcolor = remaining_color
+        self.ocolor = other_color
 
-    def start(self):
-        ctk.Text.WriteText(self.rchar*self.chars, Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.rcolor)))
-
-    def update(self, inc:int):
-        self.cur_val += inc
-        if self.cur_val > self.end_val:
-            self.cur_val = self.end_val
+    def draw(self):
         percentage = self.cur_val / self.end_val
-        chars = int(percentage * self.chars)
+        filled = int(percentage * self.width)
 
-        curpos = ctk.Cursor.CurrentCursorPosition()
-        ctk.Cursor.MoveCursor(self.spos[0], self.spos[1])
-        ctk.Text.WriteText(self.cchar*chars, Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.ccolor)))
-        ctk.Text.WriteText(self.rchar*(self.chars - chars), Flush=True, FontEnabled=True, Font=TextFont(font_color=Color(self.rcolor)))
-        ctk.Cursor.MoveCursor(self.curpos[0], self.curpos[1])
+        percent_text = f"{percentage * 100:6.2f}%"
+        if self.extended:
+            printH(f"\r{f"    ...{self.prefix[-25:]}" if len(self.prefix) > 10 else self.prefix}[", FontEnabled=True, Font=TextFont(font_color=Color(self.ocolor)), endl="")
+            printH(f"{self.cchar*filled}", FontEnabled=True, Font=TextFont(font_color=Color(self.ccolor)), endl="")
+            printH(f"{self.rchar*(self.width - filled)}", FontEnabled=True, Font=TextFont(font_color=Color(self.rcolor)), endl="")
+            printH(f"] {percent_text}", FontEnabled=True, Font=TextFont(font_color=Color(self.ocolor)), endl="")
+        else:
+            bar = (self.cchar * filled + self.rchar * (self.width - filled))
+            sys.stdout.write(f"\r{self.prefix}[{bar}] {percent_text}")
+            sys.stdout.flush()
 
-    def set(self, value: int):
-        self.cur_val = value
-        self.update(0)
+    def set(self, value):
+        self.cur_val = min(value, self.end_val)
+        self.draw()
 
     def finish(self):
-        self.set(self.end_val)
+        self.cur_val = self.end_val
+        self.draw()
         print()
 
 def step(msg, status=None, color="white", bold=False):
@@ -114,13 +144,7 @@ def download_file(url, path):
     with urllib.request.urlopen(url) as response:
         total = int(response.getheader("Content-Length", 0))
 
-        pb = ProgressBar(
-            end_value=total,
-            completed_color="green",
-            remaining_color="grey"
-        )
-
-        pb.start()
+        pb = ProgressBar(end_value=total, prefix=f"    {url} -> ", completed_color="green", remaining_color="grey", other_color="white", extended=True, width=25)
 
         downloaded = 0
 
@@ -130,11 +154,9 @@ def download_file(url, path):
 
                 if not chunk:
                     break
-
                 f.write(chunk)
 
                 downloaded += len(chunk)
-
                 pb.set(downloaded)
 
         pb.finish()
