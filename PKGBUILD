@@ -17,14 +17,14 @@ conflicts=('nfx')
 options=('!strip')
 
 source=(
-    "https://github.com/Pheonix-Studios-Git/NFX/releases/download/v${pkgver}/nfx-${pkgver}-linux-x86_64.zip"
+    "https://pheonix-studios-git.github.io/PPI/data/NFX/nfx_zip/NFX-v${pkgver}.zip"
 )
 
-sha256sums=('359f5a1f0c461b6356addc45767dce09e4b9d8226a25ca8a6b15506783d05e6f')
+sha256sums=('0093b35c47ba527a998ed3016c2873eba1ce2d06d9a0d275f37c3e398fb12fef')
 
 prepare() {
     cd "$srcdir"
-    bsdtar -xf NFX.zip
+    bsdtar -xf NFX-v${pkgver}.zip
 }
 
 check() {
