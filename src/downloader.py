@@ -23,31 +23,6 @@ PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 CONTROL_DICT = {"updated packages": False}
 
 
-def CurrentCursorPosition():
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        sys.stdout.write('\x1b[6n')
-        sys.stdout.flush()
-        response = ""
-
-        while True:
-            ch = sys.stdin.read(1)
-            response += ch
-
-            if ch == 'R':
-                break
-
-        if response.startswith('\x1b[') and response.endswith('R'):
-            y, x = response[2:-1].split(';')
-            return int(y), int(x)
-
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-    return 0, 0
-
 class ProgressBar:
     def __init__(self, end_value:int=100, width:int=25, completed_char:str="#", remaining_char:str="-", prefix:str="", extended:bool=False, completed_color:str="", remaining_color:str="", other_color:str=""):
         self.end_val = end_value
@@ -295,8 +270,12 @@ def install_binaries(metadata: dict, install_dir: str):
             if os.path.exists(dest_path):
                 os.remove(dest_path)
             
-            os.symlink(src_path, dest_path)
-            os.chmod(dest_path, os.stat(dest_path).st_mode | EXEC)
+            try:
+                os.symlink(src_path, dest_path)
+                os.chmod(dest_path, os.stat(dest_path).st_mode | EXEC)
+            except PermissionError:
+                step("Insufficient Permissions!", "Error", "red", True)
+                return
             
             if bin_info.get("PostInstall"):
                 run_post_install(os.path.join(metadata.get("DownloadPath", ""), bin_info.get("PostInstall", "")))
@@ -334,7 +313,11 @@ def remove_binaries(metadata: dict, install_dir: str):
             src_path = os.path.normcase(src_path)
             dest_path = os.path.normcase(dest_path)
 
-            os.unlink(dest_path)
+            try:
+                os.unlink(dest_path)
+            except PermissionError:
+                step("Insufficient Permissions!", "Error", "red", True)
+                return
             
             deleted_binaries += 1
 

@@ -1,6 +1,7 @@
 NFX := nfx/nfx.json
 LICENSE := LICENSE
 README := README.md
+VERSION := 1.0.0
 
 LINUX_x86_64_DIR := bin/linux/x86_64
 WINDOWS_x86_64_DIR := bin/windows/x86_64
@@ -15,9 +16,9 @@ NFX_WINDOWS_OUT := $(WINDOWS_x86_64_DIR)/dist/nfx.exe
 
 WORK_JSON := $(NFX_DIR)/build.json
 
-ZIP := $(BUILD_DIR)/NFX.zip
+ZIP := $(BUILD_DIR)/NFX-v$(VERSION).zip
 CANON_NFX := $(NFX_DIR)/nfx.canonical.json
-SIG := $(BUILD_DIR)/NFX.zip.sig
+SIG := $(BUILD_DIR)/NFX-v$(VERSION).zip.sig
 
 # Colors
 GREEN := \033[0;32m

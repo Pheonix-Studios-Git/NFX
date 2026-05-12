@@ -4,7 +4,7 @@ import os
 import platform
 
 APP_NAME = "nfx"
-VERSION = "0.1.0"
+VERSION = "1.0.0"
 DEVELOPER = "Pheonix Studios"
 
 SEPERATORS = [":", ";", "->", "-", "="]

@@ -3,8 +3,6 @@
 import os, sys, site
 from datetime import datetime
 
-import shlex
-
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions import HyperOut as Hout
 from phardwareitk.Extensions import HyperIn as Hin
@@ -145,7 +143,9 @@ def print_help() -> None:
             "genconfig": [
                 ("overwrite", "Overwrite config, if already present?")
             ]
-        }, "Generate default config")
+        }, "Generate default config"),
+        ("version", "Shows Current Version"),
+        ("help", "Prints this help message")
     ]
 
     print_commands(commands)
@@ -282,6 +282,19 @@ def main(args:list[str]) -> None:
 
     if command == "help":
         print_help()
+    elif command == "version":
+        Hout.printH(
+            "NFX (Nova Pheonix Package Manager)",
+            f"\tVersion: {VERSION}",
+            f"\tDeveloper: {DEVELOPER}", 
+            seperator="\n", 
+            Flush=True, 
+            FontEnabled=True, 
+            Font=TextFont(
+                font_color=Color("cyan"),
+                Bold=True
+            )
+        )
     elif command == "config":
         show_config()
     elif command == "genconfig":
