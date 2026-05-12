@@ -11,8 +11,8 @@
         "linux"
       ],
       "Path": "bin/linux/x86_64/dist/nfx",
-      "Sha256": "1f32c450185e423412b708a50d9293585caffa182def53bfbb99816183d7de18",
-      "Size": 12539656
+      "Sha256": "155e75aa2126fe88d09f28a5b3782c5a646eae33d85104e96b0b3b2754bc7718",
+      "Size": 13249240
     },
     {
       "Arch": [
@@ -24,13 +24,13 @@
         "windows"
       ],
       "Path": "bin/windows/x86_64/dist/nfx.exe",
-      "Sha256": "f8a24f436216803c2d9d63dc1ad2e040edaa3fb8311412432457f42997bf909c",
-      "Size": 12546345
+      "Sha256": "a0edff5db2aa7fd1a2a7a7ce321ccaf08a0e01904929e2c3768df68a2fc3e2f8",
+      "Size": 8656596
     }
   ],
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
-    "Date": "2026-04-24 20:36",
+    "Date": "2026-05-12 20:59",
     "SignatureIdentity": "pheonix-nfx"
   },
   "Conflicts": [],
@@ -41,5 +41,5 @@
   "Name": "NFX",
   "Readme": "README.md",
   "Status": "beta",
-  "Version": "0.1.0"
+  "Version": "1.0.0"
 }
