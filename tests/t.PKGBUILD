@@ -1,0 +1,1 @@
+pkgbase=('hi', "hello")

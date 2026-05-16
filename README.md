@@ -1,2 +1,2 @@
 # NFX
-Nova Pheonix Package Manager (Python Local Module+Binary)
+Nova Pheonix Package Manager (Binary)

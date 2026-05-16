@@ -13,7 +13,7 @@ class Config:
     install_dir: str = INSTALL_DIR_DEF
     download_dir: str = DOWNLOAD_DIR_DEF
     debug: bool = False
-    default_repos: list[str] = None
+    security_level: str = "max"
 
     @staticmethod
     def load(path:str=CONFIG_PATH_DEF):
@@ -22,7 +22,7 @@ class Config:
             return Config(
                 cache_dir=CACHE_DIR_DEF, 
                 debug=False, 
-                default_repos=[], 
+                security_level="max", 
                 install_dir=INSTALL_DIR_DEF,
                 download_dir=DOWNLOAD_DIR_DEF
             )
@@ -31,7 +31,7 @@ class Config:
         return Config(
             cache_dir=data.get("cache_dir", CACHE_DIR_DEF), 
             debug=data.get("debug", False), 
-            default_repos=data.get("default_repos", []), 
+            security_level=data.get("security_level", []), 
             install_dir=data.get("install_dir", INSTALL_DIR_DEF),
             download_dir=data.get("download_dir", DOWNLOAD_DIR_DEF)
         )

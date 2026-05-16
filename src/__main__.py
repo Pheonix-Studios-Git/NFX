@@ -1,23 +1,16 @@
 """Main file"""
 
-import os, sys, site
+import os, sys
 from datetime import datetime
 
 from phardwareitk.Extensions import *
 from phardwareitk.Extensions import HyperOut as Hout
-from phardwareitk.Extensions import HyperIn as Hin
-from phardwareitk.FileSystem import FileSystem as fs
-from phardwareitk.CLI.cliToolKit import *
 
 from src.constants import *
 from src.config import *
 from src.downloader import *
-
-def exitH(ExitCode:Optional[int], *ExitMsg:Optional[object]) -> None:
-    if ExitMsg:
-        step_nitem("".join(ExitMsg), status="Error", color="red", bold=True)
-
-    sys.exit(ExitCode)
+from src.helpers import *
+from src.pkgbuilder import *
 
 def format_size(size_bytes: int) -> str:
     if size_bytes < 0:
@@ -107,7 +100,7 @@ def print_help() -> None:
             ]
         }, "Updates one or more packages in sync (all dependencies are installed paralelly)"),
         ("remove <pkg>", "Removes a package"),
-        ("removes <packages>", "Remove one or more packages in parallel"),
+        ("removes <packages>", "Remove one or more packages in sync"),
         ({
             "info <pkg>": [
                 ("license", "Show it's license"),
@@ -301,37 +294,37 @@ def main(args:list[str]) -> None:
         overwrite = "overwrite" in flags
         generate_config(overwrite=overwrite)
     elif command == "install":
-        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
-        install_package(pkg, args_list, config)
+        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
+        install_package(pkg, flags, config)
     elif command == "installs":
         if len(args_list) <= 0:
-            exitH(-41, "No Packages Specified!")
+            eerror("No Packages Specified!", type=step_nitem)
         install_packages(args_list, flags, config)
     elif command == "upgrade":
         pkg = None
         if "all" not in flags:
-            pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
+            pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
             upgrade_package(pkg, flags, config)
         else:
             downloaded, _, __, ___, _____, ______ = get_all_packages(config)
             upgrade_packages(downloaded, flags, config)
     elif command == "upgrades":
         if len(args_list) <= 0 and "all" not in flags:
-            exitH(-41, "No Packages Specified!")
+            eerror("No Packages Specified!", type=step_nitem)
         elif "all" in flags:
             downloaded, _, __, ___, _____, ______ = get_all_packages(config)
             upgrade_packages(downloaded, flags, config)
         else:
             upgrade_packages(args_list, flags, config)
     elif command == "remove":
-        pkg = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
+        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
         remove_package(flags, config, pkg)
     elif command == "removes":
         if len(args_list) <= 0:
-            exitH(-41, "No Packages Specified!")
+            eerror(-41, "No Packages Specified!")
         remove_packages(args_list, flags, config)
     elif command == "info":
-        loc = args_list[0] if len(args_list) > 0 else exitH(-41, "No Package Specified!")
+        loc = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
         md, pkg_path = info_package(loc, flags, config)
         if len(flags) == 0:
             printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
@@ -373,12 +366,12 @@ def main(args:list[str]) -> None:
     elif command == "searchs":
         queries = []
         if "all" not in flags:
-            queries = args_list if len(args_list) > 0 else exitH(-41, "No Queries Specified!")
+            queries = args_list if len(args_list) > 0 else eerror("No Queries Specified!", type=step_nitem)
         search_packages(queries, flags, config)
     elif command == "search":
         query = ""
         if "all" not in flags:
-            query = args_list[0] if len(args_list) > 0 else exitH(-41, "No Query Specified!")
+            query = args_list[0] if len(args_list) > 0 else eerror("No Query Specified!", type=step_nitem)
         search_package(query, flags, config)
     elif command == "get-packages":
         new_item("Getting Packages")
@@ -388,7 +381,7 @@ def main(args:list[str]) -> None:
             if "max-count=" in v:
                 c = v.replace("max-count=", "")
                 if not str(c).isdigit():
-                    exitH(-42, f"'{c}' is not a number!")
+                    eerror(f"'{c}' is not a number!", type=step_nitem)
                 if not str(c) == "":
                     max_count = int(c)
 
@@ -397,7 +390,7 @@ def main(args:list[str]) -> None:
             if "sort=" in v:
                 sort = v.replace("sort=", "")
                 if not sort in ["alpha", "rev-alpha", "time", "rev-time", "size", "rev-size"]:
-                    exitH(-42, "sort must be either one of - alpha, rev-alpha, time, rev-time, size, rev-size")
+                    eerror("sort must be either one of - alpha, rev-alpha, time, rev-time, size, rev-size", type=step_nitem)
         
         downloaded, dsize, dtime, _, __, ___ = get_all_packages(config, sort_mode=sort)
 
@@ -422,8 +415,12 @@ def main(args:list[str]) -> None:
             jump("Removing Cache Directory and cleaning cache")
             shutil.rmtree(config.cache_dir)
             step("Cleared Cache", color="green", bold=True)
+    elif command == "build-pkg":
+        if len(args_list) < 1:
+            eerror("Please specify a BUILD file!", type=step_nitem)
+        pkg_build(args_list, flags, config)
     else:
-        exitH(-1, f"Unknown Command - {command}")
+        eerror(f"Unknown Command - {command}", type=step_nitem)
 
 if __name__ == "__main__":
     import sys
