@@ -156,10 +156,8 @@ def get_dir_size(path: str) -> int:
         pass
     return total
 
-def download_file(url, path, pb_class=ProgressBar):
-    autoHideShowCursor = False
-    if isinstance(pb_class, ProgressBar):
-        autoHideShowCursor = True
+def download_file(url, path, pb_class=ProgressBar, autoHideShowCursor=True):
+    if autoHideShowCursor:
         cli.Cursor.HideCursor()
 
     try:
