@@ -21,7 +21,7 @@ PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 
 CONTROL_DICT = {"updated packages": False}
 
-def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=ProgressBar, force_fetch=False, autoHideShowCursor=True) -> Optional[str]:
+def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=ProgressBar, force_fetch=False, autoHideShowCursor=True, useVersion=None) -> Optional[str]:
     """
     Clone a git repo or copy local path to cache_dir
     Returns path to cloned repo.
@@ -30,6 +30,11 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
     target_path = os.path.join(cache_dir, repo_name)
     force_cache = False
     rem_on_bad = True
+
+    sigfile_url = ""
+    zipfile_url = ""
+    sigfile_url_path = ""
+    zipfile_url_path = ""
 
     if os.path.exists(target_path):
         return target_path
@@ -61,7 +66,73 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
         os.mkdir(target_path)
         zippath = os.path.join(cache_dir, repo_name + ".zip")
         sigpath = os.path.join(cache_dir, repo_name + ".sig")
-        
+
+        if package_json[index].get("versioning_enabled", False):
+            ver = ""
+            vers = []
+            if useVersion is None:
+                ver = package_json[index].get("latest_version", "")
+                vers = package_json[index].get("versions", [])
+                if ver == "" and len(vers) <= 0:
+                    error("Package has versioning enabled but no latest version or any versions!")
+                    return None
+                elif ver == "":
+                    step("Package has no specified latest version, using last specified version in version list", status="Warning", color="yellow", bold=True)
+                    ver = vers[-1]
+            else:
+                ver = useVersion
+                vers = package_json[index].get("versions", [])
+                if ver == "" and len(vers) <= 0:
+                    error("Package has versioning enabled but no specified versions!")
+                    return None
+                elif ver == "":
+                    error("Please specify a version!")
+                    return None
+                
+            if not ver in vers:
+                error(f"Version '{ver}' was not found in available package versions!")
+                return None
+            
+            spath = package_json[index].get("signed_zipfile", "")
+            zpath = package_json[index].get("zipfile", "")
+
+            backslash_active = False
+            for c in spath:
+                if not backslash_active:
+                    if c == '\\':
+                        backslash_active = True
+                        continue
+                    elif c == '%':
+                        sigfile_url_path += ver
+                        continue
+                if backslash_active: backslash_active = False
+                sigfile_url_path += c
+
+            for c in zpath:
+                if not backslash_active:
+                    if c == '\\':
+                        backslash_active = True
+                        continue
+                    elif c == '%':
+                        zipfile_url_path += ver
+                        continue
+                if backslash_active: backslash_active = False
+                zipfile_url_path += c
+
+            if sigfile_url_path == "":
+                sigfile_url = repo_url + "Error404NotFound"
+            else:
+                sigfile_url = repo_url + sigfile_url_path
+            if zipfile_url_path == "":
+                zipfile_url = repo_url + "Error404NotFound"
+            else:
+                zipfile_url = repo_url + zipfile_url_path
+        else:
+            sigfile_url_path = package_json[index].get("signed_zipfile", "")
+            sigfile_url = repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")
+            zipfile_url_path = package_json[index].get("zipfile", "")
+            zipfile_url = repo_url + package_json[index].get("zipfile", "Error404NotFound")
+
     if os.path.exists(zippath) and force_fetch:
         os.remove(zippath)
     if os.path.exists(sigpath) and force_fetch:
@@ -83,8 +154,11 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
             error(f"Error Downloading the ZIP '{zippath}' to '{target_path}'\n\t{e}")
             return None
     else:
+            if zipfile_url_path == "":
+                error("Package has no zipfile!")
+                return None
             try:
-                download_file(repo_url + package_json[index].get("zipfile", "Error404NotFound"), zippath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
+                download_file(zipfile_url, zippath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
                 with zipfile.ZipFile(zippath, 'r') as zip_ref:
                     zip_ref.extractall(target_path) # Keep downloaded cache
             except zipfile.BadZipFile:
@@ -97,9 +171,9 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 error(f"Error Downloading the ZIP '{repo_url + package_json[index].get("zipfile", "Error404NotFound")}' to '{target_path}'\n\t{e}")
                 return None
 
-            if package_json[index].get("signed_zipfile", "") != "":
+            if sigfile_url_path != "":
                 try:
-                    download_file(repo_url + package_json[index].get("signed_zipfile", "Error404NotFound"), sigpath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
+                    download_file(sigfile_url, sigpath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
                 except Exception as e:
                     if os.path.exists(target_path): os.rmdir(target_path)
                     error(f"Error Downloading the ZIP SIGNATURE '{repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")}' to '{sigpath}'\n\t{e}")
