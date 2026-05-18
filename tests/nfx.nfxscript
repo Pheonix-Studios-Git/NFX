@@ -1,0 +1,114 @@
+$*
+NFX FULL CONTROL TEST SUITE
+Tests every control prefix and shlex parsing behavior
+$*
+
+$@ NFX/TestSuite-v1.0
+
+$!
+
+$& new_item
+$# print "STARTING NFX CONTROL TESTS"
+
+$& jump
+$# print "TEST 1 BASIC PRINT WITH QUOTES", color=yellow, bold=true
+$& step
+
+$# print "Hello World", color=white
+$# print "Hello \"quoted world\" test", color=white
+
+$& jump
+$# print "TEST 2 MULTI ARG PARSING", color=yellow, bold=true
+$& step
+
+$# print "arg1 arg2 arg3", color=white
+$# print "mixed \"quoted arg\" plain", color=white
+
+$& jump
+$# print "TEST 3 SPECIAL SYMBOLS AS RAW TEXT", color=yellow, bold=true
+$& step
+
+$# print "$> this is not a control token", color=white
+$# print "$< also just text inside arguments", color=white
+$# print "$@ should NOT be parsed here", color=white
+
+$& jump
+$# print "TEST 4 BOOLEAN AND NAMED ARGS", color=yellow, bold=true
+$& step
+
+$# print "flag test", color=white, bold=true
+$# print "status test", color=white, status="This Works"
+
+$& jump
+$# print "TEST 5 METADATA CONTINUITY", color=yellow, bold=true
+$& step
+
+$# print "metadata old "($(SIGN)), color=white
+$@ NFX/TestSuite-MetaCheck-v1.0
+$# print "metadata changed ($(SIGN))", color=white
+
+$& jump
+$# print "TEST 6 FUNCTION DECLARATION (arguments and return)", color=yellow, bold=true
+$& step
+
+$% testfunc arg1 arg2
+$>
+    $= ret "Yeah this works"
+$<
+$% testfunc2
+$>
+$<
+$% should_break ret
+$>
+    $# print "It will break"
+$<
+$% testfunc3 arg1
+$>
+    $= ret "Yeah this works, arg: $(arg1)"
+$<
+$# $(testfunc) "test", 2
+$# print "Output: $(ret)"
+
+$# $(testfunc2)
+$# print "Output (Void func, value should be empty): $(ret)"
+
+$# $(testfunc3) "this is a arg"
+$# print "Output: $(ret)"
+
+$# $(should_break) "another arg"
+$# print "This one should break: $(ret)"
+
+$& jump
+$# print "TEST 7 COMMENT BLOCK TOGGLE and Repeating", color=yellow, bold=true
+$& step
+
+$*
+$# print "THIS SHOULD NOT RUN", color=white
+$*
+$# print "THIS SHOULD RUN", color=white
+
+$& jump
+$# print "TEST 8 MIXED COMPLEX ARGUMENTS", color=yellow, bold=true
+$& step
+
+$# print "a1 \"a2 complex string\" a3 \"another one\"", color=white
+
+$= i 1
+$= j 3
+$^ 4
+$>
+    $# print "Count: $(i)"
+    $+ i 1
+    $# print "Remaining: $(j)"
+    $- j 1
+$<
+$_! i
+
+$# print "I is unset, so nothing should appear within these quotes - '$(i)'"
+
+$& jump
+$# print "TEST 9 EXIT BEHAVIOR", color=yellow, bold=true
+$& step
+
+$# print "About to exit safely", color=white
+$# exit 0

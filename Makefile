@@ -1,7 +1,7 @@
 NFX := nfx/nfx.json
 LICENSE := LICENSE
 README := README.md
-VERSION := 1.0.0
+VERSION := 1.0.1
 
 LINUX_x86_64_DIR := bin/linux/x86_64
 WINDOWS_x86_64_DIR := bin/windows/x86_64

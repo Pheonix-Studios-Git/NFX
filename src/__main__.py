@@ -7,6 +7,7 @@ from phardwareitk.Extensions import *
 from phardwareitk.Extensions import HyperOut as Hout
 
 from src.constants import *
+from src.errors import *
 from src.config import *
 from src.downloader import *
 from src.helpers import *
@@ -131,6 +132,8 @@ def print_help() -> None:
                 ("case", "Make it Case-Sensitive")
             ]
         }, "Search for packages which contain/are_equal to the query (Not Case Sensitive by default)"),
+        ("status-code <code>", "Understand what the NFX status code means"),
+        ("run-script <script path>", f"Run NFX Script version {VERSION}"),
         ("config", "Show configuration"),
         ({
             "genconfig": [
@@ -294,37 +297,37 @@ def main(args:list[str]) -> None:
         overwrite = "overwrite" in flags
         generate_config(overwrite=overwrite)
     elif command == "install":
-        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
+        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         install_package(pkg, flags, config)
     elif command == "installs":
         if len(args_list) <= 0:
-            eerror("No Packages Specified!", type=step_nitem)
+            eerror("No Packages Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         install_packages(args_list, flags, config)
     elif command == "upgrade":
         pkg = None
         if "all" not in flags:
-            pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
+            pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
             upgrade_package(pkg, flags, config)
         else:
             downloaded, _, __, ___, _____, ______ = get_all_packages(config)
             upgrade_packages(downloaded, flags, config)
     elif command == "upgrades":
         if len(args_list) <= 0 and "all" not in flags:
-            eerror("No Packages Specified!", type=step_nitem)
+            eerror("No Packages Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         elif "all" in flags:
             downloaded, _, __, ___, _____, ______ = get_all_packages(config)
             upgrade_packages(downloaded, flags, config)
         else:
             upgrade_packages(args_list, flags, config)
     elif command == "remove":
-        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
+        pkg = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         remove_package(flags, config, pkg)
     elif command == "removes":
         if len(args_list) <= 0:
-            eerror(-41, "No Packages Specified!")
+            eerror("No Packages Specified!", code=NFX_ERROR_INVALID_ARGUMENT)
         remove_packages(args_list, flags, config)
     elif command == "info":
-        loc = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem)
+        loc = args_list[0] if len(args_list) > 0 else eerror("No Package Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         md, pkg_path = info_package(loc, flags, config)
         if len(flags) == 0:
             printH(f"Author: {md.get("Author", "Unknown")}\n", FontEnabled=True, Font=TextFont(font_color=Color("cyan")))
@@ -366,12 +369,12 @@ def main(args:list[str]) -> None:
     elif command == "searchs":
         queries = []
         if "all" not in flags:
-            queries = args_list if len(args_list) > 0 else eerror("No Queries Specified!", type=step_nitem)
+            queries = args_list if len(args_list) > 0 else eerror("No Queries Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         search_packages(queries, flags, config)
     elif command == "search":
         query = ""
         if "all" not in flags:
-            query = args_list[0] if len(args_list) > 0 else eerror("No Query Specified!", type=step_nitem)
+            query = args_list[0] if len(args_list) > 0 else eerror("No Query Specified!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         search_package(query, flags, config)
     elif command == "get-packages":
         new_item("Getting Packages")
@@ -381,7 +384,7 @@ def main(args:list[str]) -> None:
             if "max-count=" in v:
                 c = v.replace("max-count=", "")
                 if not str(c).isdigit():
-                    eerror(f"'{c}' is not a number!", type=step_nitem)
+                    eerror(f"'{c}' is not a number!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
                 if not str(c) == "":
                     max_count = int(c)
 
@@ -390,7 +393,7 @@ def main(args:list[str]) -> None:
             if "sort=" in v:
                 sort = v.replace("sort=", "")
                 if not sort in ["alpha", "rev-alpha", "time", "rev-time", "size", "rev-size"]:
-                    eerror("sort must be either one of - alpha, rev-alpha, time, rev-time, size, rev-size", type=step_nitem)
+                    eerror("sort must be either one of - alpha, rev-alpha, time, rev-time, size, rev-size", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
         
         downloaded, dsize, dtime, _, __, ___ = get_all_packages(config, sort_mode=sort)
 
@@ -416,11 +419,44 @@ def main(args:list[str]) -> None:
             shutil.rmtree(config.cache_dir)
             step("Cleared Cache", color="green", bold=True)
     elif command == "build-pkg":
+        # if len(args_list) < 1:
+        #     eerror("Please specify a BUILD file!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
+        # pkg_build(args_list, flags, config)
+        eerror("This command is under development, users are not allowed to use it!", code=NFX_ERROR_NOT_IMPLEMENTED)
+    elif command == "status-code":
         if len(args_list) < 1:
-            eerror("Please specify a BUILD file!", type=step_nitem)
-        pkg_build(args_list, flags, config)
+            eerror("Please provide a status code", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
+        elif not args_list[0].isdigit():
+            eerror("Please provide an integer status code!", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
+
+        code = int(args_list[0])
+        new_item(f"Status Code: {code}")
+        step_desc(NFX_ERROR_MESSAGES.get(code, "Unknown Status Code"), status="Meaning", color="red", bold=False)
+    elif command == "run-script":
+        if len(args_list) < 1:
+            eerror("Please provide path to script", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
+        file = args_list[0]
+        if not os.path.exists(file):
+            eerror(f"Provided file '{file}' doesn't exist!", code=NFX_ERROR_FILE_NOT_FOUND)
+        d = ""
+        with open(file, "r") as f:
+            f.seek(0)
+            d = f.read()
+        vars = {}
+        funcs = {}
+        inbuilt_funcs = {
+            "step": step,
+            "step_desc": step_desc,
+            "step_nitem": step_nitem,
+            "new_item": new_item,
+            "jump": jump,
+            "error": error
+        }
+        rte = NFXRuntime(output="step", inbuilt_funcs=inbuilt_funcs, vars=vars, funcs=funcs)
+        vm = NFXScriptVM(rte)
+        vm.run(d)
     else:
-        eerror(f"Unknown Command - {command}", type=step_nitem)
+        eerror(f"Unknown Command - {command}", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
 
 if __name__ == "__main__":
     import sys

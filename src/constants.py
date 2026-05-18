@@ -4,10 +4,8 @@ import os
 import platform
 
 APP_NAME = "nfx"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DEVELOPER = "Pheonix Studios"
-
-SEPERATORS = [":", ";", "->", "-", "="]
 
 SYSTEM = platform.system()
 
@@ -32,3 +30,9 @@ CONFIG_PATH_DEF = config_path
 INSTALL_DIR_DEF = os.path.join(BASE_DIR_DEF, "installs")
 CACHE_DIR_DEF = os.path.join(BASE_DIR_DEF, "cache")
 DOWNLOAD_DIR_DEF = os.path.join(BASE_DIR_DEF, "downloads")
+LOCK_FILE_DEF = os.path.join(BASE_DIR_DEF, "nfx.lock")
+LOCK_FILE = "nfx.lock"
+
+POSIX_OSes = ["linux", "unix", "macos", "freebsd", "openbsd", "netbsd",
+              "haiku", "minix", "aix", "solaris", "hp-ux", "z/os", "euleros", 
+              "qnx"]

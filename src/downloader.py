@@ -12,6 +12,7 @@ from src import *
 from src.config import *
 from src.helpers import *
 from src.constants import BASE_DIR_DEF, SYSTEM
+from src.errors import *
 
 from datetime import datetime
 
@@ -442,19 +443,19 @@ def update_packages(args: list, config: Config):
             remote_data = json.load(response)
     except URLError as e:
         error("Unable to Fetch! (Try checking your internet)")
-        eerror(str(e), type=step_desc)
+        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
     except HTTPError as e:
         error("Unable to Fetch! (HTTP Error)")
-        eerror(str(e), type=step_desc)
+        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
     except ContentTooShortError as e:
         error("Unable to Fetch! (Content was too short)")
-        eerror(str(e), type=step_desc)
+        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
     except stimeout as e:
         error("Unable to Fetch! (Socket Timeout)")
-        eerror(str(e), type=step_desc)
+        eerror(str(e), type=step_desc, code=NFX_ERROR_TIMEOUT)
     except gaierror:
         error("Unable to Fetch! (Socket GAIError)")
-        eerror(str(e), type=step_desc)
+        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
 
     needed = True if "force" in args else False
     if not os.path.exists(packages):
@@ -478,7 +479,7 @@ def update_packages(args: list, config: Config):
             step("Error Downloading Packages List, skipping", status="Warning", color="yellow", bold=True)
             return False
         else:
-            eerror("Error Downloading Packages List!")
+            eerror("Error Downloading Packages List!", code=NFX_ERROR_DATABASE_CONNECTION_FAILED)
 
     step("Synced Package List!", color="green", bold=True)
     CONTROL_DICT["updated packages"] = True
@@ -942,7 +943,7 @@ def upgrade_package(package: str, args: list, config: Config):
                 step("Package is up to date", color="green", bold=True)
                 return None
             else:
-                eerror("Package/Package_List data is corrupted!")
+                eerror("Package/Package_List data is corrupted!", code=NFX_ERROR_DATABASE_CORRUPTED)
 
             new_item(f"Continuing Upgrade of {package}")   
             break
@@ -1015,7 +1016,7 @@ def info_package(name: str, args: list, config: Config) -> tuple[dict, str]:
     install_dir = config.install_dir
 
     if not os.path.exists(os.path.join(download_dir, name)):
-        eerror(f"Package '{name}' was not found in cache")
+        eerror(f"Package '{name}' was not found in cache", code=NFX_ERROR_CACHE_MISS)
 
     metadata = load_nfx_metadata(os.path.join(download_dir, name))
     return metadata, os.path.join(download_dir, name)
