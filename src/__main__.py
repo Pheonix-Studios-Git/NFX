@@ -80,24 +80,28 @@ def print_help() -> None:
     commands = [
         ({
             "install <pkg>": [
-                ("local", "It is a local-repo/URL")
+                ("local", "It is a local-repo/URL"),
+                ("version=<version>", "Specify a specific version to install")
             ]
         }, "Install one or more packages (all dependencies are installed paralelly)"),
         ({
             "installs <packages>": [
-                ("local", "They are a local-repo/URL")
+                ("local", "They are a local-repo/URL"),
+                ("version=<version>", "Specify a specific version of all packages to install")
             ]
         }, "Install one or more packages in parallel"),
         ({
             "upgrade <pkg>": [
                 ("local", "It is a local-repo/URL"),
-                ("all", "Upgrade all packages in sync (Downloaded packages)")
+                ("all", "Upgrade all packages in sync (Downloaded packages)"),
+                ("version=<version>", "Specify a specific version of the package to upgrade/downgrade to")
             ]
         }, "Updates one packages (all dependencies are installed paralelly)"),
         ({
             "upgrades <packages>": [
                 ("local", "They are a local-repo/URL"),
-                ("all", "Upgrade all packages in sync (Downloaded packages)")
+                ("all", "Upgrade all packages in sync (Downloaded packages)"),
+                ("version=<version>", "Specify a specific version of all packages to upgrade/downgrade to")
             ]
         }, "Updates one or more packages in sync (all dependencies are installed paralelly)"),
         ("remove <pkg>", "Removes a package"),
@@ -123,7 +127,9 @@ def print_help() -> None:
         ({
             "searchs <queries>": [
                 ("all", "Just show all, ignore the query"),
-                ("case", "Make it Case-Sensitive")
+                ("case", "Make it Case-Sensitive"),
+                ("show-versions=<count>", "Specifies to display <count> number or less versions."),
+                ("show-all-versions", "Specifies to display all versions.")
             ]
         }, "Searches for packages which contain/are_equal to query/query_list (Not Case Sensitive by default)"),
         ({
@@ -140,6 +146,11 @@ def print_help() -> None:
                 ("overwrite", "Overwrite config, if already present?")
             ]
         }, "Generate default config"),
+        ({
+            "global_flags": [
+                ("lockfile-info", "Incase the lockfile is locked, this flag forces NFXScript execution of the lockfile to get information on which PID is holding the lock and more")
+            ]
+        }, "Not a command, just flags that work on every command"),
         ("version", "Shows Current Version"),
         ("help", "Prints this help message")
     ]
@@ -272,6 +283,9 @@ def main(args:list[str]) -> None:
     if not command:
         print_usage()
         os._exit(1)
+
+    lock = atomic_fs_aquire_lock(command, args_list, flags)
+    if lock is None: return None
 
     if not os.path.exists(BASE_DIR_DEF):
         os.mkdir(BASE_DIR_DEF)
@@ -457,6 +471,8 @@ def main(args:list[str]) -> None:
         vm.run(d)
     else:
         eerror(f"Unknown Command - {command}", type=step_nitem, code=NFX_ERROR_INVALID_ARGUMENT)
+
+    atomic_fs_release_lock(lock)
 
 if __name__ == "__main__":
     import sys

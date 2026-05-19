@@ -22,7 +22,7 @@ PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
 
 CONTROL_DICT = {"updated packages": False}
 
-def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=ProgressBar, force_fetch=False, autoHideShowCursor=True, useVersion=None) -> Optional[str]:
+def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=ProgressBar, force_fetch=False, autoHideShowCursor=True, useVersion=None) -> Optional[tuple[str, str, str]]:
     """
     Clone a git repo or copy local path to cache_dir
     Returns path to cloned repo.
@@ -36,19 +36,18 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
     zipfile_url = ""
     sigfile_url_path = ""
     zipfile_url_path = ""
-
-    if os.path.exists(target_path):
-        return target_path
+    zippath = ""
+    sigpath = ""
 
     if ppi:
         repo_url = PPI_PAGE
-        
+
     if os.path.exists(repo_url): # Local path
         if os.path.exists(target_path):
             shutil.rmtree(target_path)
         if os.path.isdir(repo_url):
             shutil.copytree(repo_url, target_path)
-            return target_path
+            return target_path, None, None
         elif os.path.isfile(repo_url):
             # Assume ZIP
             zippath = repo_url
@@ -63,8 +62,7 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
             index += 1
         else:
             error("Could not fetch package as it was not found!")
-            return None
-        os.mkdir(target_path)
+            return None, None, None
         zippath = os.path.join(cache_dir, repo_name + ".zip")
         sigpath = os.path.join(cache_dir, repo_name + ".sig")
 
@@ -76,7 +74,7 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 vers = package_json[index].get("versions", [])
                 if ver == "" and len(vers) <= 0:
                     error("Package has versioning enabled but no latest version or any versions!")
-                    return None
+                    return None, None, None
                 elif ver == "":
                     step("Package has no specified latest version, using last specified version in version list", status="Warning", color="yellow", bold=True)
                     ver = vers[-1]
@@ -85,14 +83,14 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 vers = package_json[index].get("versions", [])
                 if ver == "" and len(vers) <= 0:
                     error("Package has versioning enabled but no specified versions!")
-                    return None
+                    return None, None, None
                 elif ver == "":
                     error("Please specify a version!")
-                    return None
+                    return None, None, None,
                 
             if not ver in vers:
                 error(f"Version '{ver}' was not found in available package versions!")
-                return None
+                return None, None, None
             
             spath = package_json[index].get("signed_zipfile", "")
             zpath = package_json[index].get("zipfile", "")
@@ -124,15 +122,26 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 sigfile_url = repo_url + "Error404NotFound"
             else:
                 sigfile_url = repo_url + sigfile_url_path
+                sigpath_base = os.path.basename(sigfile_url.rstrip("/")).replace(".zip", "")
+                sigpath = os.path.join(cache_dir, sigpath_base + ".sig")
             if zipfile_url_path == "":
                 zipfile_url = repo_url + "Error404NotFound"
             else:
                 zipfile_url = repo_url + zipfile_url_path
+                zippath_base = os.path.basename(zipfile_url.rstrip("/")).replace(".zip", "")
+                zippath = os.path.join(cache_dir, zippath_base + ".sig")
         else:
+            if useVersion is not None:
+                step("Package has no versioning enabled, fetching latest", status="Warning", color="yellow", bold=True)
             sigfile_url_path = package_json[index].get("signed_zipfile", "")
             sigfile_url = repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")
             zipfile_url_path = package_json[index].get("zipfile", "")
             zipfile_url = repo_url + package_json[index].get("zipfile", "Error404NotFound")
+
+    if os.path.exists(target_path):
+        return target_path, zippath, sigpath
+
+    os.mkdir(target_path)
 
     if os.path.exists(zippath) and force_fetch:
         os.remove(zippath)
@@ -149,15 +158,15 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
             if rem_on_bad: os.remove(zippath)
             if os.path.exists(target_path): os.rmdir(target_path)
             error(f"Package doesn't have a valid zip file")
-            return None
+            return None, None, None
         except Exception as e:
             if os.path.exists(target_path): os.rmdir(target_path)
             error(f"Error Downloading the ZIP '{zippath}' to '{target_path}'\n\t{e}")
-            return None
+            return None, None, None
     else:
             if zipfile_url_path == "":
                 error("Package has no zipfile!")
-                return None
+                return None, None, None
             try:
                 download_file(zipfile_url, zippath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
                 with zipfile.ZipFile(zippath, 'r') as zip_ref:
@@ -166,11 +175,11 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 if rem_on_bad: os.remove(zippath)
                 if os.path.exists(target_path): os.rmdir(target_path)
                 error(f"Package doesn't have a valid zip file")
-                return None
+                return None, None, None
             except Exception as e:
                 if os.path.exists(target_path): os.rmdir(target_path)
                 error(f"Error Downloading the ZIP '{repo_url + package_json[index].get("zipfile", "Error404NotFound")}' to '{target_path}'\n\t{e}")
-                return None
+                return None, None, None
 
             if sigfile_url_path != "":
                 try:
@@ -178,9 +187,9 @@ def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=Prog
                 except Exception as e:
                     if os.path.exists(target_path): os.rmdir(target_path)
                     error(f"Error Downloading the ZIP SIGNATURE '{repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")}' to '{sigpath}'\n\t{e}")
-                    return None
+                    return None, None, None
 
-    return target_path
+    return target_path, zippath, sigpath
 
 def load_nfx_metadata(repo_path: str) -> Optional[dict]:
     """Loads nfx file if found in pkg"""
@@ -331,7 +340,9 @@ def remove_binaries(metadata: dict, install_dir: str) -> bool:
             dest_path = os.path.normcase(dest_path)
 
             try:
-                if (os.path.exists(dest_path)): os.unlink(dest_path)
+                if (os.path.exists(dest_path)):
+                    step(f"Removing: {dest_path}")
+                    os.unlink(dest_path)
             except PermissionError:
                 error("Insufficient Permissions")
                 return False
@@ -357,8 +368,8 @@ def verify_package(repo_path: str, cache_dir: str, metadata: dict, config: Confi
     "Verifies the package and takes in user input as well, uses ED22519 and SHA256"
     # Verify Zip signature
     repo_name = os.path.basename(repo_path)
-    sigpath = os.path.join(cache_dir, repo_name + ".sig")
-    zippath = os.path.join(cache_dir, repo_name + ".zip")
+    sigpath = metadata["SIGPATH"] if metadata.get("SIGPATH", None) is not None else os.path.join(cache_dir, repo_name + ".sig")
+    zippath = metadata["ZIPPATH"] if metadata.get("ZIPPATH", None) is not None else os.path.join(cache_dir, repo_name + ".zip")
     if not os.path.exists(zippath):
         error("Package has lost its cached zipfile")
         return False
@@ -621,6 +632,19 @@ def search_packages(queries: list, args: list, config: Config):
         f.seek(0)
         packages_data = json.loads(f.read()).get("packages", [])
     
+    display_vers = False
+    max_ver_count = -1
+    for arg in args:
+        if "show-versions=" in arg:
+            v = arg.replace("show-versions=", "")
+            if not v.isdigit():
+                error("--show-versions=<count> needs an integer!")
+                return None
+            max_ver_count = int(v)
+            display_vers = True
+        elif "show-all-versions" == arg:
+            display_vers = True
+
     printed = 0
     if "all" in args:
         jump("Searching all packages")
@@ -629,6 +653,29 @@ def search_packages(queries: list, args: list, config: Config):
             printed += 1
             step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
             step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+            venabled = package.get("versioning_enabled", False)
+            versions = package.get("versions", [])
+            if venabled:
+                latest_ver = package.get("latest_version", "")
+                if latest_ver == "":
+                    if len(versions) <= 0:
+                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+                        continue
+                    else:
+                        latest_ver = versions[-1]
+                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+            if display_vers and max_ver_count != 0:
+                if venabled:
+                    if len(versions) <= 0:
+                        step_desc("No Versions", color="green", bold=False)
+                    else:
+                        fvers = []
+                        for i, v in enumerate(versions):
+                            if max_ver_count > 0 and i+1 > max_ver_count: break
+                            fvers.append(v)
+                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+                else:
+                    step_desc("Versioning Disabled", color="green", bold=False)
         if printed == 0:
             step("No Packages found!", status="Warning", color="yellow", bold=True)
         return None
@@ -644,6 +691,29 @@ def search_packages(queries: list, args: list, config: Config):
                 printed += 1
                 step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
                 step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+                venabled = package.get("versioning_enabled", False)
+                versions = package.get("versions", [])
+                if venabled:
+                    latest_ver = package.get("latest_version", "")
+                    if latest_ver == "":
+                        if len(versions) <= 0:
+                            step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+                            continue
+                        else:
+                            latest_ver = versions[-1]
+                    step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+                if display_vers and max_ver_count != 0:
+                    if venabled:
+                        if len(versions) <= 0:
+                            step_desc("No Versions", color="green", bold=False)
+                        else:
+                            fvers = []
+                            for i, v in enumerate(versions):
+                                if max_ver_count > 0 and i+1 > max_ver_count: break
+                                fvers.append(v)
+                            step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+                    else:
+                        step_desc("Versioning Disabled", color="green", bold=False)
 
     if printed == 0:
         step("No Packages found!", status="Warning", color="yellow", bold=True)
@@ -661,6 +731,19 @@ def search_package(query: str, args: list, config: Config):
         f.seek(0)
         packages_data = json.loads(f.read()).get("packages", [])
 
+    display_vers = False
+    max_ver_count = -1
+    for arg in args:
+        if "show-versions=" in arg:
+            v = arg.replace("show-versions=", "")
+            if not v.isdigit():
+                error("--show-versions=<count> needs an integer!")
+                return None
+            max_ver_count = int(v)
+            display_vers = True
+        elif "show-all-versions" == arg:
+            display_vers = True
+
     printed = 0
     if "all" in args:
         jump("Searching all packages")
@@ -669,6 +752,29 @@ def search_package(query: str, args: list, config: Config):
             printed += 1
             step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
             step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+            venabled = package.get("versioning_enabled", False)
+            versions = package.get("versions", [])
+            if venabled:
+                latest_ver = package.get("latest_version", "")
+                if latest_ver == "":
+                    if len(versions) <= 0:
+                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+                        continue
+                    else:
+                        latest_ver = versions[-1]
+                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+            if display_vers and max_ver_count != 0:
+                if venabled:
+                    if len(versions) <= 0:
+                        step_desc("No Versions", color="green", bold=False)
+                    else:
+                        fvers = []
+                        for i, v in enumerate(versions):
+                            if max_ver_count > 0 and i+1 > max_ver_count: break
+                            fvers.append(v)
+                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+                else:
+                    step_desc("Versioning Disabled", color="green", bold=False)
         if printed == 0:
             step("No Packages found!", status="Warning", color="yellow", bold=True)
         return None
@@ -691,6 +797,29 @@ def search_package(query: str, args: list, config: Config):
             printed += 1
             step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
             step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+            venabled = package.get("versioning_enabled", False)
+            versions = package.get("versions", [])
+            if venabled:
+                latest_ver = package.get("latest_version", "")
+                if latest_ver == "":
+                    if len(versions) <= 0:
+                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+                        continue
+                    else:
+                        latest_ver = versions[-1]
+                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+            if display_vers and max_ver_count != 0:
+                if venabled:
+                    if len(versions) <= 0:
+                        step_desc("No Versions", color="green", bold=False)
+                    else:
+                        fvers = []
+                        for i, v in enumerate(versions):
+                            if max_ver_count > 0 and i+1 > max_ver_count: break
+                            fvers.append(v)
+                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+                else:
+                    step_desc("Versioning Disabled", color="green", bold=False)
 
     if printed == 0:
         step("No Packages found!", status="Warning", color="yellow", bold=True)
@@ -723,16 +852,25 @@ def resolve_deps(pkg: str, md: list, config: Config, args: list, package_data: d
             return None
         elif package_installed(package, ["case", "full-match"], config):
             skip_install = True
-            
+        
         if not skip_install:
-            repo_path = fetch_repo(package, config.cache_dir, "local" not in args, package_data)
+            ver = None
+            for arg in args:
+                if "version=" in arg:
+                    ver = arg.replace("version=", "")
+                    if ver == "":
+                        step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+                        ver = None
+            repo_path, zippath, sigpath = fetch_repo(package, config.cache_dir, "local" not in args, package_data, useVersion=ver)
             if not repo_path: return None
             
             metadata = load_nfx_metadata(repo_path)
             if not metadata:
                 return None
+            metadata["ZIPPATH"] = zippath
+            metadata["SIGPATH"] = sigpath
             metadata["DownloadPath"] = copy_to_downloads(repo_path, config.download_dir, metadata.get("Name", ""))
-                
+
             for conflict in metadata.get("Conflicts", []):
                 if package_installed(conflict, ["case", "full-match"], config):
                     error(f"Could not install dependency '{package}' since it conflicts with installed '{conflict}'")
@@ -809,13 +947,22 @@ def install_package(package: str, args: list, config: Config, force_fetch=False)
 
     # fetch repo
     jump(f"Fetching")
-    repo_path = fetch_repo(package, cache_dir, "local" not in args, package_data, force_fetch=force_fetch)
+    ver = None
+    for arg in args:
+        if "version=" in arg:
+            ver = arg.replace("version=", "")
+            if ver == "":
+                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+                ver = None
+    repo_path, zippath, sigpath = fetch_repo(package, cache_dir, "local" not in args, package_data, force_fetch=force_fetch, useVersion=ver)
     if not repo_path: return None
     
     # load nfx.json
     jump(f"Loading Metadata")
     metadata = load_nfx_metadata(repo_path)
     if not metadata: return None
+    metadata["ZIPPATH"] = zippath
+    metadata["SIGPATH"] = sigpath
     metadata["DownloadPath"] = copy_to_downloads(repo_path, download_dir, metadata.get("Name", ""))
 
     jump(f"Checking Conflicts")
@@ -864,7 +1011,7 @@ def install_package(package: str, args: list, config: Config, force_fetch=False)
     jump(f"Finishing Installation")
     finish_download(metadata.get("Name", ""), metadata)
     
-    step(f"Package '{repo_path}' installed successfully!", color="green", bold=True)
+    step(f"Package '{package}' installed successfully!", color="green", bold=True)
 
 def remove_package(args: list, config: Config, name: str):
     new_item(f"Removing {name}")
@@ -920,6 +1067,14 @@ def upgrade_package(package: str, args: list, config: Config):
         remove_package(args, config, name)
         return install_package(package, args, config)
 
+    ver = None
+    for arg in args:
+        if "version=" in arg:
+            ver = arg.replace("version=", "")
+            if ver == "":
+                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+                ver = None
+
     package_data = {}
     with open(packages_json, "r") as f:
         f.seek(0)
@@ -930,28 +1085,68 @@ def upgrade_package(package: str, args: list, config: Config):
         return None
 
     found = False
+    needed = False
     for p in package_data:
         name = p.get("name", "")
         if package == name:
             found = True
-            date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
+
             md = load_nfx_metadata(os.path.join(download_dir, package))
+
+            if p.get("versioning_enabled", False):
+                latestVer = p.get("latest_version", "")
+                targetVer = ""
+                versions = p.get("versions", [])
+                skip = False
+                if latestVer == "":
+                    if len(versions) <= 0:
+                        step("Package has versioning enabled but no versions! Skipping version checks", status="Warning", color="yellow", bold=True)
+                        skip = True
+                    else:
+                        step("Package has no latest version, using first version in available versions", status="Warning", color="yellow", bold=True)
+                        latestVer = versions[-1]
+                if ver is not None:
+                    targetVer = ver
+                else:
+                    targetVer = latestVer
+
+                if not skip:
+                    if not targetVer in versions:
+                        error(f"Version '{targetVer}' is not a part of available versions for this package!")
+                        return None
+                    
+                    cver = md.get("Version", "0.0.1")
+                    v1 = tuple(map(int, cver.split(".")))
+                    v2 = tuple(map(int, targetVer.split(".")))
+
+                    if v1 == v2:
+                        step("Target version and Current version are same!", color="green", bold=True)
+                        return None
+                    else:
+                        needed = True
+
+            date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
             date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
             if date_obj > date_obj2:
-                pass
+                needed = True
             elif date_obj == date_obj2:
-                step("Package is up to date", color="green", bold=True)
-                return None
+                if not needed:
+                    step("Package is up to date", color="green", bold=True)
+                    return None
             else:
                 eerror("Package/Package_List data is corrupted!", code=NFX_ERROR_DATABASE_CORRUPTED)
-
-            new_item(f"Continuing Upgrade of {package}")   
+ 
             break
 
     if not found:
         error(f"No such package exists: {package}")
         return None
         
+    if not needed:
+        step("Package is up to date", color="green", bold=True)
+        return None
+    new_item(f"Continuing Upgrade of {package}")  
+
     path = os.path.join(download_dir, package)
     if not os.path.exists(path):
         error(f"Could not find package download!")
@@ -961,28 +1156,24 @@ def upgrade_package(package: str, args: list, config: Config):
     jump("Loading Metadata")
     metadata = load_nfx_metadata(path)
     if not metadata: return None
-        
-    jump("Moving Old data")
-    tmp_dir = os.path.join(BASE_DIR_DEF, "tmp_dir")
-    if not os.path.exists(tmp_dir):
-        os.mkdir(tmp_dir)
-    shutil.move(path, tmp_dir)
-    npath = os.path.join(tmp_dir, package)
     
-    jump("Removing SYMLINKS")
+    jump("Removing symlinks")
     cancel = False
     if not remove_binaries(metadata, install_dir): cancel = True
-    
+
     if cancel:
         jump("Cancelling")
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        shutil.move(npath, path)
-        shutil.rmtree(tmp_dir)
         if not binaries_installed(metadata, install_dir):
             install_binaries(metadata, install_dir)
         error("Upgrade cancelled and rollback completed")
         return None
+
+    jump("Moving old data")
+    tmp_dir = os.path.join(BASE_DIR_DEF, "tmp_dir")
+    if not os.path.exists(tmp_dir):
+        os.mkdir(tmp_dir)
+    npath = os.path.join(tmp_dir, package)
+    shutil.move(path, npath)
     
     try:
         install_package(package, args, config, force_fetch=True)
@@ -1005,7 +1196,7 @@ def upgrade_package(package: str, args: list, config: Config):
         error("Upgrade cancelled and rollback completed")
         return None
         
-    jump("Removing OLD data")
+    jump("Removing old data")
     shutil.rmtree(tmp_dir)
     
     step(f"Package '{package}' upgraded successfully!", color="green", bold=True)
@@ -1053,23 +1244,30 @@ def install_packages(packages: list, args: list, config: Config):
             step(f"Package already installed: {package} try using 'upgrades' instead (skipping)", status="Warning", color="yellow", bold=True)
             packages.pop(packages.index(package))
     mthreads = 4
-    if "thread=" in args:
-        for arg in args:
-            if "thread=" in arg:
-                v:str = arg.replace("thread=", "")
-                if not v.isdigit():
-                    step_nitem("Provide a number in argument 'threads', defaulting to 4", status="Warning", color="yellow", bold=True)
-                else:
-                    mthreads = int(v)
+    for arg in args:
+        if "thread=" in arg:
+            v:str = arg.replace("thread=", "")
+            if not v.isdigit():
+                step_nitem("Provide a number in argument 'threads', defaulting to 4", status="Warning", color="yellow", bold=True)
+            else:
+                mthreads = int(v)
 
     valid_packages = []
     results = None
+
+    ver = None
+    for arg in args:
+        if "version=" in arg:
+            ver = arg.replace("version=", "")
+            if ver == "":
+                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+                ver = None
     
     jump("Fetching Packages")
     cli.Cursor.HideCursor()
     with concurrent.futures.ThreadPoolExecutor(max_workers=mthreads) as executor:
         results = executor.map(
-            lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data, pb=ConcurProgressBar, autoHideShowCursor=False),
+            lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data, pb=ConcurProgressBar, autoHideShowCursor=False, useVersion=ver),
             packages
         )
 
