@@ -13,7 +13,7 @@
 
     "Build": {
         "AllowedSigners": "keys/allowed_signers",
-        "SignatureIdentity": "pheonix-nfx",
+        "SignatureIdentity": "pheonix-package-index",
         "Date": "2026-04-21"
     },
     

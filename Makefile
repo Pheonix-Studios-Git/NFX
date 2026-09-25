@@ -119,7 +119,7 @@ verify:
 
 	@ssh-keygen -Y verify \
 		-f $(KEY_DIR)/allowed_signers \
-		-I pheonix-nfx \
+		-I pheonix-package-index \
 		-n file \
 		-s $(SIG) \
 		< $(ZIP)

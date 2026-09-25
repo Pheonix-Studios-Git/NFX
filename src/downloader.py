@@ -1,6 +1,7 @@
 """Downloading Manager File"""
 import subprocess, os, shutil, json, stat, zipfile, urllib.request
 import concurrent.futures
+import tempfile, requests
 
 from phardwareitk.CLI import cliToolKit as cli
 
@@ -19,1289 +20,1324 @@ from datetime import datetime
 EXEC = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 PPI_PAGE = "https://pheonix-studios-git.github.io/PPI/data/"
+PPI_VALIDITY_KEY = "https://pheonix-studios-git.github.io/PPI/important/validity_key"
 
 CONTROL_DICT = {"updated packages": False}
 
+def verify_zip(path: str) -> bool:
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            if zf.testzip() is not None:
+                return False
+        return True
+    except (zipfile.BadZipFile, OSError):
+        return False
+
 def fetch_repo(repo_url:str, cache_dir:str, ppi:bool, package_json:dict, pb=ProgressBar, force_fetch=False, autoHideShowCursor=True, useVersion=None) -> Optional[tuple[str, str, str]]:
-    """
-    Clone a git repo or copy local path to cache_dir
-    Returns path to cloned repo.
-    """
-    repo_name = os.path.basename(repo_url.rstrip("/")).replace(".zip", "")
-    target_path = os.path.join(cache_dir, repo_name)
-    force_cache = False
-    rem_on_bad = True
+	"""
+	Clone a git repo or copy local path to cache_dir
+	Returns path to cloned repo.
+	"""
+	repo_name = os.path.basename(repo_url.rstrip("/")).replace(".zip", "")
+	target_path = os.path.join(cache_dir, repo_name)
+	force_cache = False
+	rem_on_bad = True
 
-    sigfile_url = ""
-    zipfile_url = ""
-    sigfile_url_path = ""
-    zipfile_url_path = ""
-    zippath = ""
-    sigpath = ""
+	sigfile_url = ""
+	zipfile_url = ""
+	sigfile_url_path = ""
+	zipfile_url_path = ""
+	zippath = ""
+	sigpath = ""
 
-    if ppi:
-        repo_url = PPI_PAGE
+	if ppi:
+		repo_url = PPI_PAGE
 
-    if os.path.exists(repo_url): # Local path
-        if os.path.exists(target_path):
-            shutil.rmtree(target_path)
-        if os.path.isdir(repo_url):
-            shutil.copytree(repo_url, target_path)
-            return target_path, None, None
-        elif os.path.isfile(repo_url):
-            # Assume ZIP
-            zippath = repo_url
-            sigpath = ""
-            force_cache = True
-            rem_on_bad = False
-    else: # Assuming zip
-        index = 0
-        for obj in package_json:
-            if obj.get("name", "") == repo_name:
-                break
-            index += 1
-        else:
-            error("Could not fetch package as it was not found!")
-            return None, None, None
-        zippath = os.path.join(cache_dir, repo_name + ".zip")
-        sigpath = os.path.join(cache_dir, repo_name + ".sig")
+	if os.path.exists(repo_url): # Local path
+		if os.path.exists(target_path):
+			shutil.rmtree(target_path)
+		if os.path.isdir(repo_url):
+			shutil.copytree(repo_url, target_path)
+			return target_path, None, None
+		elif os.path.isfile(repo_url):
+			# Assume ZIP
+			zippath = repo_url
+			sigpath = ""
+			force_cache = True
+			rem_on_bad = False
+	else: # Assuming zip
+		index = 0
+		for obj in package_json:
+			if obj.get("name", "") == repo_name:
+				break
+			index += 1
+		else:
+			error("Could not fetch package as it was not found!")
+			return None, None, None
+		zippath = os.path.join(cache_dir, repo_name + ".zip")
+		sigpath = os.path.join(cache_dir, repo_name + ".sig")
 
-        if package_json[index].get("versioning_enabled", False):
-            ver = ""
-            vers = []
-            if useVersion is None:
-                ver = package_json[index].get("latest_version", "")
-                vers = package_json[index].get("versions", [])
-                if ver == "" and len(vers) <= 0:
-                    error("Package has versioning enabled but no latest version or any versions!")
-                    return None, None, None
-                elif ver == "":
-                    step("Package has no specified latest version, using last specified version in version list", status="Warning", color="yellow", bold=True)
-                    ver = vers[-1]
-            else:
-                ver = useVersion
-                vers = package_json[index].get("versions", [])
-                if ver == "" and len(vers) <= 0:
-                    error("Package has versioning enabled but no specified versions!")
-                    return None, None, None
-                elif ver == "":
-                    error("Please specify a version!")
-                    return None, None, None,
-                
-            if not ver in vers:
-                error(f"Version '{ver}' was not found in available package versions!")
-                return None, None, None
-            
-            spath = package_json[index].get("signed_zipfile", "")
-            zpath = package_json[index].get("zipfile", "")
+		if package_json[index].get("versioning_enabled", False):
+			ver = ""
+			vers = []
+			if useVersion is None:
+				ver = package_json[index].get("latest_version", "")
+				vers = package_json[index].get("versions", [])
+				if ver == "" and len(vers) <= 0:
+					error("Package has versioning enabled but no latest version or any versions!")
+					return None, None, None
+				elif ver == "":
+					step("Package has no specified latest version, using last specified version in version list", status="Warning", color="yellow", bold=True)
+					ver = vers[-1]
+			else:
+				ver = useVersion
+				vers = package_json[index].get("versions", [])
+				if ver == "" and len(vers) <= 0:
+					error("Package has versioning enabled but no specified versions!")
+					return None, None, None
+				elif ver == "":
+					error("Please specify a version!")
+					return None, None, None,
+				
+			if not ver in vers:
+				error(f"Version '{ver}' was not found in available package versions!")
+				return None, None, None
+			
+			spath = package_json[index].get("signed_zipfile", "")
+			zpath = package_json[index].get("zipfile", "")
 
-            backslash_active = False
-            for c in spath:
-                if not backslash_active:
-                    if c == '\\':
-                        backslash_active = True
-                        continue
-                    elif c == '%':
-                        sigfile_url_path += ver
-                        continue
-                if backslash_active: backslash_active = False
-                sigfile_url_path += c
+			backslash_active = False
+			for c in spath:
+				if not backslash_active:
+					if c == '\\':
+						backslash_active = True
+						continue
+					elif c == '%':
+						sigfile_url_path += ver
+						continue
+				if backslash_active: backslash_active = False
+				sigfile_url_path += c
 
-            for c in zpath:
-                if not backslash_active:
-                    if c == '\\':
-                        backslash_active = True
-                        continue
-                    elif c == '%':
-                        zipfile_url_path += ver
-                        continue
-                if backslash_active: backslash_active = False
-                zipfile_url_path += c
+			for c in zpath:
+				if not backslash_active:
+					if c == '\\':
+						backslash_active = True
+						continue
+					elif c == '%':
+						zipfile_url_path += ver
+						continue
+				if backslash_active: backslash_active = False
+				zipfile_url_path += c
 
-            if sigfile_url_path == "":
-                sigfile_url = repo_url + "Error404NotFound"
-            else:
-                sigfile_url = repo_url + sigfile_url_path
-                sigpath_base = os.path.basename(sigfile_url.rstrip("/")).replace(".zip", "")
-                sigpath = os.path.join(cache_dir, sigpath_base + ".sig")
-            if zipfile_url_path == "":
-                zipfile_url = repo_url + "Error404NotFound"
-            else:
-                zipfile_url = repo_url + zipfile_url_path
-                zippath_base = os.path.basename(zipfile_url.rstrip("/")).replace(".zip", "")
-                zippath = os.path.join(cache_dir, zippath_base + ".sig")
-        else:
-            if useVersion is not None:
-                step("Package has no versioning enabled, fetching latest", status="Warning", color="yellow", bold=True)
-            sigfile_url_path = package_json[index].get("signed_zipfile", "")
-            sigfile_url = repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")
-            zipfile_url_path = package_json[index].get("zipfile", "")
-            zipfile_url = repo_url + package_json[index].get("zipfile", "Error404NotFound")
+			if sigfile_url_path == "":
+				sigfile_url = repo_url + "Error404NotFound"
+			else:
+				sigfile_url = repo_url + sigfile_url_path
+				sigpath_base = os.path.basename(sigfile_url.rstrip("/")).replace(".zip", "")
+				sigpath = os.path.join(cache_dir, sigpath_base + ".sig")
+			if zipfile_url_path == "":
+				zipfile_url = repo_url + "Error404NotFound"
+			else:
+				zipfile_url = repo_url + zipfile_url_path
+				zippath_base = os.path.basename(zipfile_url.rstrip("/")).replace(".zip", "")
+				zippath = os.path.join(cache_dir, zippath_base + ".zip")
+		else:
+			if useVersion is not None:
+				step("Package has no versioning enabled, fetching latest", status="Warning", color="yellow", bold=True)
+			sigfile_url_path = package_json[index].get("signed_zipfile", "")
+			sigfile_url = repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")
+			zipfile_url_path = package_json[index].get("zipfile", "")
+			zipfile_url = repo_url + package_json[index].get("zipfile", "Error404NotFound")
 
-    if os.path.exists(target_path):
-        return target_path, zippath, sigpath
+	if os.path.exists(target_path):
+		if force_fetch:
+			shutil.rmtree(target_path)
+		else:
+			return target_path, zippath, sigpath
 
-    os.mkdir(target_path)
+	os.mkdir(target_path)
 
-    if os.path.exists(zippath) and force_fetch:
-        os.remove(zippath)
-    if os.path.exists(sigpath) and force_fetch:
-        os.remove(sigpath)
+	if os.path.exists(zippath) and force_fetch:
+		os.remove(zippath)
+	if os.path.exists(sigpath) and force_fetch:
+		os.remove(sigpath)
 
-    if os.path.exists(zippath):
-        try:
-            with zipfile.ZipFile(zippath, 'r') as zip_ref:
-                if force_cache:
-                    shutil.copy(zippath, os.path.join(cache_dir, repo_name + ".zip"))
-                zip_ref.extractall(target_path) # Keep downloaded cache
-        except zipfile.BadZipFile:
-            if rem_on_bad: os.remove(zippath)
-            if os.path.exists(target_path): os.rmdir(target_path)
-            error(f"Package doesn't have a valid zip file")
-            return None, None, None
-        except Exception as e:
-            if os.path.exists(target_path): os.rmdir(target_path)
-            error(f"Error Downloading the ZIP '{zippath}' to '{target_path}'\n\t{e}")
-            return None, None, None
-    else:
-            if zipfile_url_path == "":
-                error("Package has no zipfile!")
-                return None, None, None
-            try:
-                download_file(zipfile_url, zippath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
-                with zipfile.ZipFile(zippath, 'r') as zip_ref:
-                    zip_ref.extractall(target_path) # Keep downloaded cache
-            except zipfile.BadZipFile:
-                if rem_on_bad: os.remove(zippath)
-                if os.path.exists(target_path): os.rmdir(target_path)
-                error(f"Package doesn't have a valid zip file")
-                return None, None, None
-            except Exception as e:
-                if os.path.exists(target_path): os.rmdir(target_path)
-                error(f"Error Downloading the ZIP '{repo_url + package_json[index].get("zipfile", "Error404NotFound")}' to '{target_path}'\n\t{e}")
-                return None, None, None
+	if os.path.exists(zippath):
+		if not verify_zip(zippath):
+			error(f"Package has an/a Invalid/Dangerous Zip '{zippath}'")
+			return None, None, None
+		
+		try:
+			with zipfile.ZipFile(zippath, 'r') as zip_ref:
+				if force_cache:
+					shutil.copy(zippath, os.path.join(cache_dir, repo_name + ".zip"))
+				zip_ref.extractall(target_path) # Keep downloaded cache
+		except zipfile.BadZipFile:
+			if rem_on_bad: os.remove(zippath)
+			if os.path.exists(target_path): os.rmdir(target_path)
+			error(f"Package doesn't have a valid zip file")
+			return None, None, None
+		except Exception as e:
+			if os.path.exists(target_path): os.rmdir(target_path)
+			error(f"Error Downloading the ZIP '{zippath}' to '{target_path}'\n\t{e}")
+			return None, None, None
+	else:
+			if zipfile_url_path == "":
+				error("Package has no zipfile!")
+				return None, None, None
+			try:
+				download_file(zipfile_url, zippath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
+				if not verify_zip(zippath):
+					error(f"Package has an/a Invalid/Dangerous Zip '{zippath}'")
+					return None, None, None
 
-            if sigfile_url_path != "":
-                try:
-                    download_file(sigfile_url, sigpath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
-                except Exception as e:
-                    if os.path.exists(target_path): os.rmdir(target_path)
-                    error(f"Error Downloading the ZIP SIGNATURE '{repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")}' to '{sigpath}'\n\t{e}")
-                    return None, None, None
+				with zipfile.ZipFile(zippath, 'r') as zip_ref:
+					zip_ref.extractall(target_path) # Keep downloaded cache
+			except zipfile.BadZipFile:
+				if rem_on_bad: os.remove(zippath)
+				if os.path.exists(target_path): os.rmdir(target_path)
+				error(f"Package doesn't have a valid zip file")
+				return None, None, None
+			except Exception as e:
+				if os.path.exists(target_path): os.rmdir(target_path)
+				error(f"Error Downloading the ZIP '{repo_url + package_json[index].get("zipfile", "Error404NotFound")}' to '{target_path}'\n\t{e}")
+				return None, None, None
 
-    return target_path, zippath, sigpath
+			if sigfile_url_path != "":
+				try:
+					download_file(sigfile_url, sigpath, pb_class=pb, autoHideShowCursor=autoHideShowCursor)
+				except Exception as e:
+					if os.path.exists(target_path): os.rmdir(target_path)
+					error(f"Error Downloading the ZIP SIGNATURE '{repo_url + package_json[index].get("signed_zipfile", "Error404NotFound")}' to '{sigpath}'\n\t{e}")
+					return None, None, None
+
+	return target_path, zippath, sigpath
 
 def load_nfx_metadata(repo_path: str) -> Optional[dict]:
-    """Loads nfx file if found in pkg"""
-    nfx_file = os.path.join(repo_path, "nfx.json")
-    if not os.path.exists(nfx_file):
-        error("Metadata file (nfx.json) not found!")
-        return None
-    with open(nfx_file, "r") as f:
-        data = json.load(f)
-    return data
+	"""Loads nfx file if found in pkg"""
+	nfx_file = os.path.join(repo_path, "nfx.json")
+	if not os.path.exists(nfx_file):
+		error("Metadata file (nfx.json) not found!")
+		return None
+	with open(nfx_file, "r") as f:
+		data = json.load(f)
+	return data
 
-def load_nfx_metadata_ex(nfx_file:str) -> dict:
-    """Loads NFX MetaData (Extended)"""
-    if not os.path.exists(nfx_file):
-        error("Metadata file (nfx.json) not found!")
-        return None
-    with open(nfx_file, "r") as f:
-        data = json.load(f)
-    return data
+def load_nfx_metadata_ex(nfx_file:str) -> Optional[dict]:
+	"""Loads NFX MetaData (Extended)"""
+	if not os.path.exists(nfx_file):
+		error("Metadata file (nfx.json) not found!")
+		return None
+	with open(nfx_file, "r") as f:
+		data = json.load(f)
+	return data
 
 def copy_to_downloads(repo_path: str, download_dir: str, package_name: str) -> str:
-    """Copy nfx to downloads"""
-    target = os.path.join(download_dir, package_name)
-    if os.path.exists(target):
-        shutil.rmtree(target)
-    shutil.copytree(repo_path, target)
-    shutil.rmtree(repo_path)
-    return target
+	"""Copy nfx to downloads"""
+	target = os.path.join(download_dir, package_name)
+	if os.path.exists(target):
+		shutil.rmtree(target)
+	shutil.copytree(repo_path, target)
+	shutil.rmtree(repo_path)
+	return target
 
 def finish_download(package_name: str, metadata: dict):
-    """Finish Working on the download directory and generate necessary files"""
-    return None # Does nothing for now
-    
+	"""Finish Working on the download directory and generate necessary files"""
+	return None # Does nothing for now
+	
 def install_binaries(metadata: dict, install_dir: str) -> bool:
-    """Installs Binaries for the pkg"""
-    os_name, arch = get_system_info()
-    binaries = metadata.get("Binaries", [])
-    downloaded_binaries = 0
-    
-    for bin_info in binaries:
-        bin_os = [o.lower() for o in bin_info.get("Os", [])]
-        bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
-        
-        if os_name in bin_os and arch in bin_arch:
-            src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
-            dest_path = os.path.join(install_dir, bin_info.get("Name", ""))
-            
-            if SYSTEM == "Windows" and not os.path.exists(src_path):
-                root, ext = os.path.splitext(src_path)
-                if ext.lower() != ".exe":
-                    alt_path = src_path + ".exe"
-                    if os.path.exists(alt_path):
-                        src_path = alt_path
-                root, ext = os.path.splitext(dest_path)
-                if ext.lower() != ".exe":
-                    alt_path = dest_path + ".exe"
-                    if os.path.exists(alt_path):
-                        dest_path = alt_path
-            src_path = os.path.normcase(src_path)
-            dest_path = os.path.normcase(dest_path)
+	"""Installs Binaries for the pkg"""
+	os_name, arch = get_system_info()
+	binaries = metadata.get("Binaries", [])
+	downloaded_binaries = 0
+	
+	for bin_info in binaries:
+		bin_os = [o.lower() for o in bin_info.get("Os", [])]
+		bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
+		
+		if os_name in bin_os and arch in bin_arch:
+			src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
+			dest_path = os.path.join(install_dir, bin_info.get("Name", ""))
+			
+			if SYSTEM == "Windows" and not os.path.exists(src_path):
+				root, ext = os.path.splitext(src_path)
+				if ext.lower() != ".exe":
+					alt_path = src_path + ".exe"
+					if os.path.exists(alt_path):
+						src_path = alt_path
+				root, ext = os.path.splitext(dest_path)
+				if ext.lower() != ".exe":
+					alt_path = dest_path + ".exe"
+					if os.path.exists(alt_path):
+						dest_path = alt_path
+			src_path = os.path.normcase(src_path)
+			dest_path = os.path.normcase(dest_path)
 
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
-            
-            try:
-                os.symlink(src_path, dest_path)
-                os.chmod(dest_path, os.stat(dest_path).st_mode | EXEC)
-            except PermissionError:
-                error("Insufficient Permissions!")
-                return False
-            
-            if bin_info.get("PostInstall"):
-                run_post_install(os.path.join(metadata.get("DownloadPath", ""), bin_info.get("PostInstall", "")))
+			if os.path.exists(dest_path):
+				os.remove(dest_path)
+			
+			try:
+				os.symlink(src_path, dest_path)
+				os.chmod(dest_path, os.stat(dest_path).st_mode | EXEC)
+			except PermissionError:
+				error("Insufficient Permissions!")
+				return False
+			
+			if bin_info.get("PostInstall"):
+				run_post_install(os.path.join(metadata.get("DownloadPath", ""), bin_info.get("PostInstall", "")))
 
-            downloaded_binaries += 1
+			downloaded_binaries += 1
 
-    if downloaded_binaries == 0:
-        step("The specified package doesn't support the machine! Continuing (Won't Install Binaries)", status="Warning", color="yellow", bold=True)
+	if downloaded_binaries == 0:
+		step("The specified package doesn't support the machine! Continuing (Won't Install Binaries)", status="Warning", color="yellow", bold=True)
 
-    return True
-    
+	return True
+	
 def binaries_installed(metadata: dict, install_dir: str, required=1) -> bool:
-    """Removes Binaries for the package"""
-    os_name, arch = get_system_info()
-    binaries = metadata.get("Binaries", [])
-    count = 0
-    
-    for bin_info in binaries:
-        bin_os = [o.lower() for o in bin_info.get("Os", [])]
-        bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
-        
-        if os_name in bin_os and arch in bin_arch:
-            src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
-            dest_path = os.path.join(install_dir, bin_info.get("Name", "")) 
-            
-            if SYSTEM == "Windows" and not os.path.exists(src_path):
-                root, ext = os.path.splitext(src_path)
-                if ext.lower() != ".exe":
-                    alt_path = src_path + ".exe"
-                    if os.path.exists(alt_path):
-                        src_path = alt_path
-                root, ext = os.path.splitext(dest_path)
-                if ext.lower() != ".exe":
-                    alt_path = dest_path + ".exe"
-                    if os.path.exists(alt_path):
-                        dest_path = alt_path
-            src_path = os.path.normcase(src_path)
-            dest_path = os.path.normcase(dest_path)
+	"""Removes Binaries for the package"""
+	os_name, arch = get_system_info()
+	binaries = metadata.get("Binaries", [])
+	count = 0
+	
+	for bin_info in binaries:
+		bin_os = [o.lower() for o in bin_info.get("Os", [])]
+		bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
+		
+		if os_name in bin_os and arch in bin_arch:
+			src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
+			dest_path = os.path.join(install_dir, bin_info.get("Name", "")) 
+			
+			if SYSTEM == "Windows" and not os.path.exists(src_path):
+				root, ext = os.path.splitext(src_path)
+				if ext.lower() != ".exe":
+					alt_path = src_path + ".exe"
+					if os.path.exists(alt_path):
+						src_path = alt_path
+				root, ext = os.path.splitext(dest_path)
+				if ext.lower() != ".exe":
+					alt_path = dest_path + ".exe"
+					if os.path.exists(alt_path):
+						dest_path = alt_path
+			src_path = os.path.normcase(src_path)
+			dest_path = os.path.normcase(dest_path)
 
-            try:
-                if (os.path.exists(dest_path)):
-                    count += 1
-            except PermissionError:
-                error("Insufficient Permissions")
-                return False
-            
-            if count >= required:
-                return True
+			try:
+				if (os.path.exists(dest_path)):
+					count += 1
+			except PermissionError:
+				error("Insufficient Permissions")
+				return False
+			
+			if count >= required:
+				return True
 
-    return False
+	return False
 
 def remove_binaries(metadata: dict, install_dir: str) -> bool:
-    """Removes Binaries for the package"""
-    os_name, arch = get_system_info()
-    binaries = metadata.get("Binaries", [])
-    deleted_binaries = 0
-    
-    for bin_info in binaries:
-        bin_os = [o.lower() for o in bin_info.get("Os", [])]
-        bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
-        
-        if os_name in bin_os and arch in bin_arch:
-            src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
-            dest_path = os.path.join(install_dir, bin_info.get("Name", "")) 
-            
-            if SYSTEM == "Windows" and not os.path.exists(src_path):
-                root, ext = os.path.splitext(src_path)
-                if ext.lower() != ".exe":
-                    alt_path = src_path + ".exe"
-                    if os.path.exists(alt_path):
-                        src_path = alt_path
-                root, ext = os.path.splitext(dest_path)
-                if ext.lower() != ".exe":
-                    alt_path = dest_path + ".exe"
-                    if os.path.exists(alt_path):
-                        dest_path = alt_path
-            src_path = os.path.normcase(src_path)
-            dest_path = os.path.normcase(dest_path)
+	"""Removes Binaries for the package"""
+	os_name, arch = get_system_info()
+	binaries = metadata.get("Binaries", [])
+	deleted_binaries = 0
+	
+	for bin_info in binaries:
+		bin_os = [o.lower() for o in bin_info.get("Os", [])]
+		bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
+		
+		if os_name in bin_os and arch in bin_arch:
+			src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
+			dest_path = os.path.join(install_dir, bin_info.get("Name", "")) 
+			
+			if SYSTEM == "Windows" and not os.path.exists(src_path):
+				root, ext = os.path.splitext(src_path)
+				if ext.lower() != ".exe":
+					alt_path = src_path + ".exe"
+					if os.path.exists(alt_path):
+						src_path = alt_path
+				root, ext = os.path.splitext(dest_path)
+				if ext.lower() != ".exe":
+					alt_path = dest_path + ".exe"
+					if os.path.exists(alt_path):
+						dest_path = alt_path
+			src_path = os.path.normcase(src_path)
+			dest_path = os.path.normcase(dest_path)
 
-            try:
-                if (os.path.exists(dest_path)):
-                    step(f"Removing: {dest_path}")
-                    os.unlink(dest_path)
-            except PermissionError:
-                error("Insufficient Permissions")
-                return False
-            
-            deleted_binaries += 1
+			try:
+				if (os.path.exists(dest_path)):
+					step(f"Removing: {dest_path}")
+					os.unlink(dest_path)
+					deleted_binaries += 1
+			except PermissionError:
+				error("Insufficient Permissions")
+				return False
 
-    if deleted_binaries == 0:
-        step("The specified package doesn't support the machine! Continuing (No Binaries were installed in the first place, probably!)", status="Warning", color="yellow", bold=True)
+	if deleted_binaries == 0:
+		step("The specified package doesn't support the machine! Continuing (No Binaries were installed in the first place, probably!)", status="Warning", color="yellow", bold=True)
 
-    return True
+	return True
 
 def run_post_install(script_path: str) -> bool:
-    """Runs post install scripts"""
-    os.chmod(script_path, os.stat(script_path).st_mode | EXEC)
-    if os.path.exists(script_path) and os.access(script_path, os.X_OK):
-        subprocess.run([script_path], check=True)
-        return True
-    else:
-        error("Post install failed to run (Most likely a permission or path issue)")
-        return False
+	"""Runs post install scripts"""
+	if os.path.exists(script_path) and os.access(script_path, os.X_OK):
+		os.chmod(script_path, os.stat(script_path).st_mode | EXEC)
+		subprocess.run([script_path], check=True)
+		return True
+	else:
+		error("Post install failed to run (Most likely a permission or path issue)")
+		return False
 
 def verify_package(repo_path: str, cache_dir: str, metadata: dict, config: Config):
-    "Verifies the package and takes in user input as well, uses ED22519 and SHA256"
-    # Verify Zip signature
-    repo_name = os.path.basename(repo_path)
-    sigpath = metadata["SIGPATH"] if metadata.get("SIGPATH", None) is not None else os.path.join(cache_dir, repo_name + ".sig")
-    zippath = metadata["ZIPPATH"] if metadata.get("ZIPPATH", None) is not None else os.path.join(cache_dir, repo_name + ".zip")
-    if not os.path.exists(zippath):
-        error("Package has lost its cached zipfile")
-        return False
-    if (os.path.exists(sigpath)):
-        try:
-            result = subprocess.run(
-                [
-                    "ssh-keygen",
-                    "-Y", "verify",
-                    "-f", os.path.join(metadata["DownloadPath"], metadata.get("Build", {}).get("AllowedSigners", "")),
-                    "-I", metadata.get("Build", {}).get("SignatureIdentity", ""),
-                    "-n", "file",
-                    "-s", sigpath,
-                ],
-                input=open(zippath, "rb").read(),
-                capture_output=True,
-            )
-            if result.returncode != 0:
-                if config.security_level in ("max", "very-high", "high", "medium", "low"):
-                    error("Package ED25519 Signature Match Failed")
-                    return False
-                step("Package is tampered with (Risk: Very High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
-                if input("").lower() not in ("y", "yes", "yeah", "yea"):
-                    return False
-        except Exception as e:
-            if config.security_level in ("max", "very-high", "high", "medium", "low"):
-                error("'ssh-keygen' was not found, hence 'ZIP' verification can't be done!")
-                return False
-            step("'ssh-keygen' was not found, hence 'ZIP' verification is skipped (Risk: Medium), continue (y/N): ", status="Input", color="yellow", bold=True)
-            if input("").lower() not in ("y", "yes", "yeah", "yea"):
-                return False
-    else:
-        if config.security_level in ("max", "very-high", "high", "medium"):
-            error("Package ED25519 Signature Match Failed")
-            return False
-        step("Package is unverified (Risk: High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
-        if input("").lower() not in ("y", "yes", "yeah", "yea"):
-            return False
+	"Verifies the package and takes in user input as well, uses Ed22519 and SHA256"
+	# Verify Zip signature
+	repo_name = os.path.basename(repo_path)
+	sigpath = metadata["SIGPATH"] if metadata.get("SIGPATH", None) is not None else os.path.join(cache_dir, repo_name + ".sig")
+	zippath = metadata["ZIPPATH"] if metadata.get("ZIPPATH", None) is not None else os.path.join(cache_dir, repo_name + ".zip")
+	if not os.path.exists(zippath):
+		error("Package has lost its cached zipfile")
+		return False
 
-    # Verify Binary hashes (only the supported one)
-    os_name, arch = get_system_info()
-    binaries = metadata.get("Binaries", [])
-    
-    for bin_info in binaries:
-        bin_os = [o.lower() for o in bin_info.get("Os", [])]
-        bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
-        
-        if os_name in bin_os and arch in bin_arch:
-            src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
-            
-            if SYSTEM == "Windows" and not os.path.exists(src_path):
-                root, ext = os.path.splitext(src_path)
-                if ext.lower() != ".exe":
-                    alt_path = src_path + ".exe"
-                    if os.path.exists(alt_path):
-                        src_path = alt_path
+	validity_key_path = ""	
+	if (os.path.exists(sigpath)):
+		try:
+			response = requests.get(PPI_VALIDITY_KEY, timeout=10)
+			response.raise_for_status()
+	
+			with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
+				f.write(response.content)
+				validity_key_path = f.name
 
-            src_path = os.path.normcase(src_path)
-            if not os.path.exists(src_path):
-                error(f"Package lost its binaries! ({src_path})")
-                return False
-            hash_ = sha256sum_file(src_path)
-            if hash_ != bin_info.get("Sha256", ""):
-                if config.security_level in ("max", "very-high", "high"):
-                    error("Package Binary SHA256 HASH Match Failed")
-                    return False
-                step("Package has invalid sha256 hashed binaries (Risk: Medium), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
-                if input("").lower() not in ("y", "yes", "yeah", "yea"):
-                    return False
-    
-    return True
+			
+			result = subprocess.run(
+				[
+					"ssh-keygen",
+					"-Y", "verify",
+					"-f", validity_key_path,
+					"-I", metadata.get("Build", {}).get("SignatureIdentity", ""),
+					"-n", "file",
+					"-s", sigpath,
+				],
+				input=open(zippath, "rb").read(),
+				capture_output=True,
+			)
+			if result.returncode != 0:
+				if config.security_level in ("max", "very-high", "high", "medium", "low"):
+					error("Package ED25519 Signature Match Failed")
+					return False
+				step("Package is tampered with (Risk: Very High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+				if input("").lower() not in ("y", "yes", "yeah", "yea"):
+					return False
+		except Exception as e:
+			if config.security_level in ("max", "very-high", "high", "medium", "low"):
+				error(f"An error occured '{e}', hence 'ZIP' verification can't be done!")
+				return False
+			step(f"An error occured '{e}', hence 'ZIP' verification is skipped (Risk: Medium), continue (y/N): ", status="Input", color="yellow", bold=True)
+			if input("").lower() not in ("y", "yes", "yeah", "yea"):
+				return False
+		finally:
+			if validity_key_path and os.path.exists(validity_key_path):
+				os.unlink(validity_key_path)
+	else:
+		if config.security_level in ("max", "very-high", "high", "medium"):
+			error("Package ED25519 Signature Match Failed")
+			return False
+		step("Package is unverified (Risk: High), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+		if input("").lower() not in ("y", "yes", "yeah", "yea"):
+			return False
+
+	# Verify Binary hashes (only the supported one)
+	os_name, arch = get_system_info()
+	binaries = metadata.get("Binaries", [])
+	
+	for bin_info in binaries:
+		bin_os = [o.lower() for o in bin_info.get("Os", [])]
+		bin_arch = [a.lower() for a in bin_info.get("Arch", [])]
+		
+		if os_name in bin_os and arch in bin_arch:
+			src_path = os.path.join(metadata.get("DownloadPath", ""), bin_info.get("Path", ""))
+			
+			if SYSTEM == "Windows" and not os.path.exists(src_path):
+				root, ext = os.path.splitext(src_path)
+				if ext.lower() != ".exe":
+					alt_path = src_path + ".exe"
+					if os.path.exists(alt_path):
+						src_path = alt_path
+
+			src_path = os.path.normcase(src_path)
+			if not os.path.exists(src_path):
+				error(f"Package lost its binaries! ({src_path})")
+				return False
+			hash_ = sha256sum_file(src_path)
+			if hash_ != bin_info.get("Sha256", ""):
+				if config.security_level in ("max", "very-high", "high"):
+					error("Package Binary SHA256 HASH Match Failed")
+					return False
+				step("Package has invalid sha256 hashed binaries (Risk: Medium), do you want to continue (y/N): ", status="Input", color="yellow", bold=True)
+				if input("").lower() not in ("y", "yes", "yeah", "yea"):
+					return False
+	
+	return True
 
 def update_packages(args: list, config: Config):
-    """Updates the package json file"""
-    if CONTROL_DICT["updated packages"] and not "force" in args:
-        return None
-    url = PPI_PAGE + "packages.json"
-    packages = os.path.join(BASE_DIR_DEF, "packages.json")
+	"""Updates the package json file"""
+	if CONTROL_DICT["updated packages"] and not "force" in args:
+		return None
+	url = PPI_PAGE + "packages.json"
+	packages = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    try:
-        with urllib.request.urlopen(url) as response:
-            remote_data = json.load(response)
-    except URLError as e:
-        error("Unable to Fetch! (Try checking your internet)")
-        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
-    except HTTPError as e:
-        error("Unable to Fetch! (HTTP Error)")
-        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
-    except ContentTooShortError as e:
-        error("Unable to Fetch! (Content was too short)")
-        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
-    except stimeout as e:
-        error("Unable to Fetch! (Socket Timeout)")
-        eerror(str(e), type=step_desc, code=NFX_ERROR_TIMEOUT)
-    except gaierror:
-        error("Unable to Fetch! (Socket GAIError)")
-        eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
+	try:
+		with urllib.request.urlopen(url) as response:
+			remote_data = json.load(response)
+	except HTTPError as e:
+		error("Unable to Fetch! (HTTP Error)")
+		eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
+	except URLError as e:
+		error("Unable to Fetch! (Try checking your internet)")
+		eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
+	except ContentTooShortError as e:
+		error("Unable to Fetch! (Content was too short)")
+		eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
+	except stimeout as e:
+		error("Unable to Fetch! (Socket Timeout)")
+		eerror(str(e), type=step_desc, code=NFX_ERROR_TIMEOUT)
+	except gaierror:
+		error("Unable to Fetch! (Socket GAIError)")
+		eerror(str(e), type=step_desc, code=NFX_ERROR_MIRROR_UNREACHABLE)
 
-    needed = True if "force" in args else False
-    if not os.path.exists(packages):
-        needed = True
-    else:
-        with open(packages, "r") as f:
-            local_data = json.load(f)
+	needed = True if "force" in args else False
+	if not os.path.exists(packages):
+		needed = True
+	else:
+		with open(packages, "r") as f:
+			local_data = json.load(f)
 
-        needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") > datetime.strptime(local_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") else needed
-    
-    jump("Updating Package List")
-    if (not needed):
-        step("Package List up-to-date!", color="green", bold=True)
-        CONTROL_DICT["updated packages"] = True
-        return None
+		needed = True if datetime.strptime(remote_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") > datetime.strptime(local_data.get("modified", "1970-01-01 00:00"), "%Y-%m-%d %H:%M") else needed
+	
+	jump("Updating Package List")
+	if (not needed):
+		step("Package List up-to-date!", color="green", bold=True)
+		CONTROL_DICT["updated packages"] = True
+		return None
 
-    try:
-        download_file(PPI_PAGE + "packages.json", packages)
-    except Exception as e:
-        if os.path.exists(packages):
-            step("Error Downloading Packages List, skipping", status="Warning", color="yellow", bold=True)
-            return False
-        else:
-            eerror("Error Downloading Packages List!", code=NFX_ERROR_DATABASE_CONNECTION_FAILED)
+	try:
+		download_file(PPI_PAGE + "packages.json", packages)
+	except Exception as e:
+		if os.path.exists(packages):
+			step("Error Downloading Packages List, skipping", status="Warning", color="yellow", bold=True)
+			return False
+		else:
+			eerror("Error Downloading Packages List!", code=NFX_ERROR_DATABASE_CONNECTION_FAILED)
 
-    step("Synced Package List!", color="green", bold=True)
-    CONTROL_DICT["updated packages"] = True
+	step("Synced Package List!", color="green", bold=True)
+	CONTROL_DICT["updated packages"] = True
 
 def get_all_packages(config: Config, sort_mode:str="alpha") -> tuple[list[str], list[int], list[float], list[str], list[int], list[float]]:
-    """
-    Provides all packages
-    
-    Returns ([Downloaded Packages], [Downloaded Packages Size], [Downloaded Packages Time], [Installed Packages], [Installed Packages Size], [Installed Packages Time])
-    """
-    download_dir = config.download_dir
-    install_dir = config.install_dir
+	"""
+	Provides all packages
+	
+	Returns ([Downloaded Packages], [Downloaded Packages Size], [Downloaded Packages Time], [Installed Packages], [Installed Packages Size], [Installed Packages Time])
+	"""
+	download_dir = config.download_dir
+	install_dir = config.install_dir
 
-    downloaded = []
-    if os.path.exists(download_dir):
-        for item in os.listdir(download_dir):
-            path = os.path.join(download_dir, item)
-            if os.path.isdir(path):
-                downloaded.append((
-                    item,
-                    get_dir_size(path),
-                    os.path.getmtime(path)
-                ))
-    else:
-        step("No download dir found!", status="Warning", color="yellow", bold=True)
+	downloaded = []
+	if os.path.exists(download_dir):
+		for item in os.listdir(download_dir):
+			path = os.path.join(download_dir, item)
+			if os.path.isdir(path):
+				downloaded.append((
+					item,
+					get_dir_size(path),
+					os.path.getmtime(path)
+				))
+	else:
+		step("No download dir found!", status="Warning", color="yellow", bold=True)
 
-    installed = []
-    if os.path.exists(install_dir):
-        for item in os.listdir(install_dir):
-            path = os.path.join(install_dir, item)
-            if os.path.islink(path):
-                installed.append((
-                    item,
-                    os.path.getsize(path),
-                    os.path.getmtime(path)
-                ))
-    else:
-        step("No installation dir found!", status="Warning", color="yellow", bold=True)
+	installed = []
+	if os.path.exists(install_dir):
+		for item in os.listdir(install_dir):
+			path = os.path.join(install_dir, item)
+			if os.path.islink(path):
+				installed.append((
+					item,
+					os.path.getsize(path),
+					os.path.getmtime(path)
+				))
+	else:
+		step("No installation dir found!", status="Warning", color="yellow", bold=True)
 
-    if sort_mode == "alpha":
-        key_fn = lambda x: x[0].lower()
-        reverse = False
-    elif sort_mode == "rev-alpha":
-        key_fn = lambda x: x[0].lower()
-        reverse = True
-    elif sort_mode == "time":
-        key_fn = lambda x: x[2]
-        reverse = False
-    elif sort_mode == "size":
-        key_fn = lambda x: x[1]
-        reverse = False
-    elif sort_mode == "rev-time":
-        key_fn = lambda x: x[2]
-        reverse = True
-    elif sort_mode == "rev-size":
-        key_fn = lambda x: x[1]
-        reverse = True
-    else:
-        key_fn = None
+	if sort_mode == "alpha":
+		key_fn = lambda x: x[0].lower()
+		reverse = False
+	elif sort_mode == "rev-alpha":
+		key_fn = lambda x: x[0].lower()
+		reverse = True
+	elif sort_mode == "time":
+		key_fn = lambda x: x[2]
+		reverse = False
+	elif sort_mode == "size":
+		key_fn = lambda x: x[1]
+		reverse = False
+	elif sort_mode == "rev-time":
+		key_fn = lambda x: x[2]
+		reverse = True
+	elif sort_mode == "rev-size":
+		key_fn = lambda x: x[1]
+		reverse = True
+	else:
+		key_fn = None
 
-    if key_fn:
-        downloaded.sort(key=key_fn, reverse=reverse)
-        installed.sort(key=key_fn, reverse=reverse)
+	if key_fn:
+		downloaded.sort(key=key_fn, reverse=reverse)
+		installed.sort(key=key_fn, reverse=reverse)
 
-    d_names  = [x[0] for x in downloaded]
-    d_sizes  = [x[1] for x in downloaded]
-    d_times  = [x[2] for x in downloaded]
+	d_names  = [x[0] for x in downloaded]
+	d_sizes  = [x[1] for x in downloaded]
+	d_times  = [x[2] for x in downloaded]
 
-    i_names  = [x[0] for x in installed]
-    i_sizes  = [x[1] for x in installed]
-    i_times  = [x[2] for x in installed]
+	i_names  = [x[0] for x in installed]
+	i_sizes  = [x[1] for x in installed]
+	i_times  = [x[2] for x in installed]
 
-    return d_names, d_sizes, d_times, i_names, i_sizes, i_times
+	return d_names, d_sizes, d_times, i_names, i_sizes, i_times
 
 def package_exists(pkg: str, args: list, config: Config):
-    """Checks if a package exists"""
+	"""Checks if a package exists"""
 
-    if "local" in args:
-        return os.path.exists(pkg)
+	if "local" in args:
+		return os.path.exists(pkg)
 
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
-    update_packages([], config)
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	update_packages([], config)
 
-    packages_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        packages_data = json.loads(f.read()).get("packages", [])
+	packages_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		packages_data = json.loads(f.read()).get("packages", [])
 
-    case = False
-    full_match = "full-match" in args
-    query = pkg
-    if "case" in args:
-        case = True
-    else:
-        query = pkg.lower()
+	case = False
+	full_match = "full-match" in args
+	query = pkg
+	if "case" in args:
+		case = True
+	else:
+		query = pkg.lower()
 
-    for package in packages_data:
-        name = package.get("name", "")
-        n = name
-        if not case: n = name.lower()
+	for package in packages_data:
+		name = package.get("name", "")
+		n = name
+		if not case: n = name.lower()
 
-        res = query in n if not full_match else query == n
-        
-        if res: return True
+		res = query in n if not full_match else query == n
+		
+		if res: return True
 
-    return False
+	return False
 
 def package_installed(pkg: str, args: list, config: Config):
-    """Checks if a package is installed"""
-    dpkgs, _, __, ___, _____, ______ = get_all_packages(config)
+	"""Checks if a package is installed"""
+	_, __, ___, ipkgs, _____, ______ = get_all_packages(config)
 
-    case = False
-    full_match = "full-match" in args
-    query = pkg
-    if "case" in args:
-        case = True
-    else:
-        query = pkg.lower()
+	case = False
+	full_match = "full-match" in args
+	query = pkg
+	if "case" in args:
+		case = True
+	else:
+		query = pkg.lower()
 
-    for package in dpkgs:
-        n = package
-        if not case: n = package.lower()
+	for package in ipkgs:
+		n = package
+		if not case: n = package.lower()
 
-        res = query in n if not full_match else query == n
-        
-        if res: return True
+		res = query in n if not full_match else query == n
+		
+		if res: return True
 
-    return False
+	return False
 
 def search_packages(queries: list, args: list, config: Config):
-    """Searches for a package but via multiple queries"""
-    new_item("Searching for packages")
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	"""Searches for a package but via multiple queries"""
+	new_item("Searching for packages")
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    update_packages([], config)
+	update_packages([], config)
 
-    packages_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        packages_data = json.loads(f.read()).get("packages", [])
-    
-    display_vers = False
-    max_ver_count = -1
-    for arg in args:
-        if "show-versions=" in arg:
-            v = arg.replace("show-versions=", "")
-            if not v.isdigit():
-                error("--show-versions=<count> needs an integer!")
-                return None
-            max_ver_count = int(v)
-            display_vers = True
-        elif "show-all-versions" == arg:
-            display_vers = True
+	packages_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		packages_data = json.loads(f.read()).get("packages", [])
+	
+	display_vers = False
+	max_ver_count = -1
+	for arg in args:
+		if "show-versions=" in arg:
+			v = arg.replace("show-versions=", "")
+			if not v.isdigit():
+				error("--show-versions=<count> needs an integer!")
+				return None
+			max_ver_count = int(v)
+			display_vers = True
+		elif "show-all-versions" == arg:
+			display_vers = True
 
-    printed = 0
-    if "all" in args:
-        jump("Searching all packages")
-        for package in packages_data:
-            name = package.get("name", "")
-            printed += 1
-            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
-            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
-            venabled = package.get("versioning_enabled", False)
-            versions = package.get("versions", [])
-            if venabled:
-                latest_ver = package.get("latest_version", "")
-                if latest_ver == "":
-                    if len(versions) <= 0:
-                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
-                        continue
-                    else:
-                        latest_ver = versions[-1]
-                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
-            if display_vers and max_ver_count != 0:
-                if venabled:
-                    if len(versions) <= 0:
-                        step_desc("No Versions", color="green", bold=False)
-                    else:
-                        fvers = []
-                        for i, v in enumerate(versions):
-                            if max_ver_count > 0 and i+1 > max_ver_count: break
-                            fvers.append(v)
-                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
-                else:
-                    step_desc("Versioning Disabled", color="green", bold=False)
-        if printed == 0:
-            step("No Packages found!", status="Warning", color="yellow", bold=True)
-        return None
-    else:
-        jump(f"Searching using queries {", ".join(queries)}")
+	printed = 0
+	if "all" in args:
+		jump("Searching all packages")
+		for package in packages_data:
+			name = package.get("name", "")
+			printed += 1
+			step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+			step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+			venabled = package.get("versioning_enabled", False)
+			versions = package.get("versions", [])
+			if venabled:
+				latest_ver = package.get("latest_version", "")
+				if latest_ver == "":
+					if len(versions) <= 0:
+						step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+						continue
+					else:
+						latest_ver = versions[-1]
+				step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+			if display_vers and max_ver_count != 0:
+				if venabled:
+					if len(versions) <= 0:
+						step_desc("No Versions", color="green", bold=False)
+					else:
+						fvers = []
+						for i, v in enumerate(versions):
+							if max_ver_count > 0 and i+1 > max_ver_count: break
+							fvers.append(v)
+						step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+				else:
+					step_desc("Versioning Disabled", color="green", bold=False)
+		if printed == 0:
+			step("No Packages found!", status="Warning", color="yellow", bold=True)
+		return None
+	else:
+		jump(f"Searching using queries {", ".join(queries)}")
 
-    for package in packages_data:
-        name = package.get("name", "")
-        for query in queries:
-            q = query if "case" in args else query.lower()
-            n = name if "case" in args else name.lower()
-            if q in n:
-                printed += 1
-                step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
-                step_desc(package.get("description", "<No Description>"), color="green", bold=False)
-                venabled = package.get("versioning_enabled", False)
-                versions = package.get("versions", [])
-                if venabled:
-                    latest_ver = package.get("latest_version", "")
-                    if latest_ver == "":
-                        if len(versions) <= 0:
-                            step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
-                            continue
-                        else:
-                            latest_ver = versions[-1]
-                    step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
-                if display_vers and max_ver_count != 0:
-                    if venabled:
-                        if len(versions) <= 0:
-                            step_desc("No Versions", color="green", bold=False)
-                        else:
-                            fvers = []
-                            for i, v in enumerate(versions):
-                                if max_ver_count > 0 and i+1 > max_ver_count: break
-                                fvers.append(v)
-                            step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
-                    else:
-                        step_desc("Versioning Disabled", color="green", bold=False)
+	for package in packages_data:
+		name = package.get("name", "")
+		for query in queries:
+			q = query if "case" in args else query.lower()
+			n = name if "case" in args else name.lower()
+			if q in n:
+				printed += 1
+				step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+				step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+				venabled = package.get("versioning_enabled", False)
+				versions = package.get("versions", [])
+				if venabled:
+					latest_ver = package.get("latest_version", "")
+					if latest_ver == "":
+						if len(versions) <= 0:
+							step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+							continue
+						else:
+							latest_ver = versions[-1]
+					step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+				if display_vers and max_ver_count != 0:
+					if venabled:
+						if len(versions) <= 0:
+							step_desc("No Versions", color="green", bold=False)
+						else:
+							fvers = []
+							for i, v in enumerate(versions):
+								if max_ver_count > 0 and i+1 > max_ver_count: break
+								fvers.append(v)
+							step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+					else:
+						step_desc("Versioning Disabled", color="green", bold=False)
 
-    if printed == 0:
-        step("No Packages found!", status="Warning", color="yellow", bold=True)
+	if printed == 0:
+		step("No Packages found!", status="Warning", color="yellow", bold=True)
 
 def search_package(query: str, args: list, config: Config):
-    """Searches for a package but via single queries"""
-    new_item("Searching for package")
+	"""Searches for a package but via single queries"""
+	new_item("Searching for package")
 
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    update_packages([], config)
+	update_packages([], config)
 
-    packages_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        packages_data = json.loads(f.read()).get("packages", [])
+	packages_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		packages_data = json.loads(f.read()).get("packages", [])
 
-    display_vers = False
-    max_ver_count = -1
-    for arg in args:
-        if "show-versions=" in arg:
-            v = arg.replace("show-versions=", "")
-            if not v.isdigit():
-                error("--show-versions=<count> needs an integer!")
-                return None
-            max_ver_count = int(v)
-            display_vers = True
-        elif "show-all-versions" == arg:
-            display_vers = True
+	display_vers = False
+	max_ver_count = -1
+	for arg in args:
+		if "show-versions=" in arg:
+			v = arg.replace("show-versions=", "")
+			if not v.isdigit():
+				error("--show-versions=<count> needs an integer!")
+				return None
+			max_ver_count = int(v)
+			display_vers = True
+		elif "show-all-versions" == arg:
+			display_vers = True
 
-    printed = 0
-    if "all" in args:
-        jump("Searching all packages")
-        for package in packages_data:
-            name = package.get("name", "")
-            printed += 1
-            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
-            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
-            venabled = package.get("versioning_enabled", False)
-            versions = package.get("versions", [])
-            if venabled:
-                latest_ver = package.get("latest_version", "")
-                if latest_ver == "":
-                    if len(versions) <= 0:
-                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
-                        continue
-                    else:
-                        latest_ver = versions[-1]
-                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
-            if display_vers and max_ver_count != 0:
-                if venabled:
-                    if len(versions) <= 0:
-                        step_desc("No Versions", color="green", bold=False)
-                    else:
-                        fvers = []
-                        for i, v in enumerate(versions):
-                            if max_ver_count > 0 and i+1 > max_ver_count: break
-                            fvers.append(v)
-                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
-                else:
-                    step_desc("Versioning Disabled", color="green", bold=False)
-        if printed == 0:
-            step("No Packages found!", status="Warning", color="yellow", bold=True)
-        return None
-    else:
-        jump(f"Searching using query {query}")
+	printed = 0
+	if "all" in args:
+		jump("Searching all packages")
+		for package in packages_data:
+			name = package.get("name", "")
+			printed += 1
+			step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+			step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+			venabled = package.get("versioning_enabled", False)
+			versions = package.get("versions", [])
+			if venabled:
+				latest_ver = package.get("latest_version", "")
+				if latest_ver == "":
+					if len(versions) <= 0:
+						step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+						continue
+					else:
+						latest_ver = versions[-1]
+				step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+			if display_vers and max_ver_count != 0:
+				if venabled:
+					if len(versions) <= 0:
+						step_desc("No Versions", color="green", bold=False)
+					else:
+						fvers = []
+						for i, v in enumerate(versions):
+							if max_ver_count > 0 and i+1 > max_ver_count: break
+							fvers.append(v)
+						step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+				else:
+					step_desc("Versioning Disabled", color="green", bold=False)
+		if printed == 0:
+			step("No Packages found!", status="Warning", color="yellow", bold=True)
+		return None
+	else:
+		jump(f"Searching using query {query}")
 
-    case = False
-    if "case" in args:
-        case = True
-    else:
-        query = query.lower()
+	case = False
+	if "case" in args:
+		case = True
+	else:
+		query = query.lower()
 
-    for package in packages_data:
-        name = package.get("name", "")
-        n = name
-        if not case:
-            n = name.lower()
-        
-        if query in n:
-            printed += 1
-            step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
-            step_desc(package.get("description", "<No Description>"), color="green", bold=False)
-            venabled = package.get("versioning_enabled", False)
-            versions = package.get("versions", [])
-            if venabled:
-                latest_ver = package.get("latest_version", "")
-                if latest_ver == "":
-                    if len(versions) <= 0:
-                        step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
-                        continue
-                    else:
-                        latest_ver = versions[-1]
-                step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
-            if display_vers and max_ver_count != 0:
-                if venabled:
-                    if len(versions) <= 0:
-                        step_desc("No Versions", color="green", bold=False)
-                    else:
-                        fvers = []
-                        for i, v in enumerate(versions):
-                            if max_ver_count > 0 and i+1 > max_ver_count: break
-                            fvers.append(v)
-                        step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
-                else:
-                    step_desc("Versioning Disabled", color="green", bold=False)
+	for package in packages_data:
+		name = package.get("name", "")
+		n = name
+		if not case:
+			n = name.lower()
+		
+		if query in n:
+			printed += 1
+			step(f"{name if name else "<No Name>"} by {package.get("author", "<No Author>")}:", color="green", bold=True)
+			step_desc(package.get("description", "<No Description>"), color="green", bold=False)
+			venabled = package.get("versioning_enabled", False)
+			versions = package.get("versions", [])
+			if venabled:
+				latest_ver = package.get("latest_version", "")
+				if latest_ver == "":
+					if len(versions) <= 0:
+						step_desc(f"Broken versioning in package (No versions found)", color="red", bold=True)
+						continue
+					else:
+						latest_ver = versions[-1]
+				step_desc(f"Latest Version: {latest_ver}", color="green", bold=False)
+			if display_vers and max_ver_count != 0:
+				if venabled:
+					if len(versions) <= 0:
+						step_desc("No Versions", color="green", bold=False)
+					else:
+						fvers = []
+						for i, v in enumerate(versions):
+							if max_ver_count > 0 and i+1 > max_ver_count: break
+							fvers.append(v)
+						step_desc(f"Versions: ({', '.join(fvers)})", color="green", bold=False)
+				else:
+					step_desc("Versioning Disabled", color="green", bold=False)
 
-    if printed == 0:
-        step("No Packages found!", status="Warning", color="yellow", bold=True)
+	if printed == 0:
+		step("No Packages found!", status="Warning", color="yellow", bold=True)
 
 def resolve_deps(pkg: str, md: list, config: Config, args: list, package_data: dict, stack: list=None, visited: list=None):
-    if stack is None: stack = []
-    if visited is None: visited = []
-    
-    if pkg in visited: return []
-    elif pkg in stack:
-        error(f"Dependency loop found, dependency '{pkg}' already in stack!")
-        return None
-    
-    final_list = []
-    if not md: return final_list
-    
-    depends = md.get("Dependencies", [])
-    
-    stack.append(pkg)
-    
-    for package in depends:
-        skip_install = False
-        exist_args = ["case", "full-match"]
-        metadata = None
-        
-        if "local" in args:
-            exist_args.append("local")
-        if not package_exists(package, exist_args, config):
-            error(f"No such dependency exists: {package}")
-            return None
-        elif package_installed(package, ["case", "full-match"], config):
-            skip_install = True
-        
-        if not skip_install:
-            ver = None
-            for arg in args:
-                if "version=" in arg:
-                    ver = arg.replace("version=", "")
-                    if ver == "":
-                        step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
-                        ver = None
-            repo_path, zippath, sigpath = fetch_repo(package, config.cache_dir, "local" not in args, package_data, useVersion=ver)
-            if not repo_path: return None
-            
-            metadata = load_nfx_metadata(repo_path)
-            if not metadata:
-                return None
-            metadata["ZIPPATH"] = zippath
-            metadata["SIGPATH"] = sigpath
-            metadata["DownloadPath"] = copy_to_downloads(repo_path, config.download_dir, metadata.get("Name", ""))
+	if stack is None: stack = []
+	if visited is None: visited = []
+	
+	if pkg in visited: return []
+	elif pkg in stack:
+		error(f"Dependency loop found, dependency '{pkg}' already in stack!")
+		return None
+	
+	final_list = []
+	if not md: return final_list
+	
+	depends = md.get("Dependencies", [])
+	
+	stack.append(pkg)
+	
+	for package in depends:
+		skip_install = False
+		exist_args = ["case", "full-match"]
+		metadata = None
+		
+		if "local" in args:
+			exist_args.append("local")
+		if not package_exists(package, exist_args, config):
+			error(f"No such dependency exists: {package}")
+			return None
+		elif package_installed(package, ["case", "full-match"], config):
+			skip_install = True
+		
+		if not skip_install:
+			ver = None
+			for arg in args:
+				if "version=" in arg:
+					ver = arg.replace("version=", "")
+					if ver == "":
+						step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+						ver = None
+			repo_path, zippath, sigpath = fetch_repo(package, config.cache_dir, "local" not in args, package_data, useVersion=ver)
+			if not repo_path: return None
+			
+			metadata = load_nfx_metadata(repo_path)
+			if not metadata:
+				return None
+			metadata["ZIPPATH"] = zippath
+			metadata["SIGPATH"] = sigpath
+			metadata["DownloadPath"] = copy_to_downloads(repo_path, config.download_dir, metadata.get("Name", ""))
 
-            for conflict in metadata.get("Conflicts", []):
-                if package_installed(conflict, ["case", "full-match"], config):
-                    error(f"Could not install dependency '{package}' since it conflicts with installed '{conflict}'")
-                    return None
-                    
-            if not verify_package(repo_path, config.cache_dir, metadata, config):
-                error(f"Could not install dependency '{package}' since verification failed")
-                return None
-                
-            if metadata.get("PostInstall"):
-                step(f"Running post-install script (dependency): {metadata['PostInstall']}", status="Log")
-                if not run_post_install(os.path.join(metadata["DownloadPath"], metadata.get("PostInstall", []))): return None
-                
-            if not install_binaries(metadata, config.install_dir): return None
-            
-            finish_download(metadata.get("Name", ""), metadata)
-            
-            step(f"Dependency '{package}'' is installed successfuly", color="green", bold=True)
-            
-        if metadata is None:
-            repo_name = os.path.basename(package.rstrip("/")).replace(".zip", "")
-            target_path = os.path.join(config.download_dir, repo_name)
-            metadata = load_nfx_metadata(target_path)
-            
-        out = resolve_deps(package, metadata, config, args, package_data, stack, visited)
-        if out is None:
-            path = os.path.join(config.download_dir, package)
-            if not os.path.exists(path): return None
-            jump(f"Removing dependency {package}")
-            if not remove_binaries(metadata, config.install_dir): return None
-            shutil.rmtree(path)
-            step(f"Dependency '{package}' removed successfully!", color="green", bold=True)
-            return None
-        final_list.extend(out)
-        
-    stack.pop(stack.index(pkg))
-    visited.append(pkg)
-        
-    return final_list
+			for conflict in metadata.get("Conflicts", []):
+				if package_installed(conflict, ["case", "full-match"], config):
+					error(f"Could not install dependency '{package}' since it conflicts with installed '{conflict}'")
+					return None
+					
+			if not verify_package(repo_path, config.cache_dir, metadata, config):
+				error(f"Could not install dependency '{package}' since verification failed")
+				return None
+				
+			if metadata.get("PostInstall"):
+				step(f"Running post-install script (dependency): {metadata['PostInstall']}", status="Log")
+				if not run_post_install(os.path.join(metadata["DownloadPath"], metadata.get("PostInstall", []))): return None
+				
+			if not install_binaries(metadata, config.install_dir): return None
+			
+			finish_download(metadata.get("Name", ""), metadata)
+			
+			step(f"Dependency '{package}'' is installed successfuly", color="green", bold=True)
+			
+		if metadata is None:
+			repo_name = os.path.basename(package.rstrip("/")).replace(".zip", "")
+			target_path = os.path.join(config.download_dir, repo_name)
+			metadata = load_nfx_metadata(target_path)
+			
+		out = resolve_deps(package, metadata, config, args, package_data, stack, visited)
+		if out is None:
+			path = os.path.join(config.download_dir, package)
+			if not os.path.exists(path): return None
+			jump(f"Removing dependency {package}")
+			if not remove_binaries(metadata, config.install_dir): return None
+			shutil.rmtree(path)
+			step(f"Dependency '{package}' removed successfully!", color="green", bold=True)
+			return None
+		final_list.extend(out)
+		
+	stack.pop(stack.index(pkg))
+	visited.append(pkg)
+		
+	return final_list
 
 def install_package(package: str, args: list, config: Config, force_fetch=False):
-    """Installs a package"""
-    new_item(f"Installing {package}")
+	"""Installs a package"""
+	new_item(f"Installing {package}")
 
-    jump(f"Setting and Checking Directories")
-    download_dir = config.download_dir
-    cache_dir = config.cache_dir
-    install_dir = config.install_dir
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	jump(f"Setting and Checking Directories")
+	download_dir = config.download_dir
+	cache_dir = config.cache_dir
+	install_dir = config.install_dir
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    if not os.path.exists(download_dir):
-        os.mkdir(download_dir)
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
-    if not os.path.exists(install_dir):
-        os.mkdir(install_dir)
+	if not os.path.exists(download_dir):
+		os.mkdir(download_dir)
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	if not os.path.exists(install_dir):
+		os.mkdir(install_dir)
 
-    update_packages([], config)
+	update_packages([], config)
 
-    package_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        package_data = json.loads(f.read()).get("packages", [])
+	package_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		package_data = json.loads(f.read()).get("packages", [])
 
-    exist_args = ["case", "full-match"]
-    if "local" in args:
-        exist_args.append("local")
-    if not package_exists(package, exist_args, config):
-        error(f"No such package exists!")
-        return None
-    elif package_installed(package, ["case", "full-match"], config):
-        step(f"Package already installed, use 'upgrade' instead!", status="Warning", color="yellow", bold=True)
-        return None
+	exist_args = ["case", "full-match"]
+	if "local" in args:
+		exist_args.append("local")
+	if not package_exists(package, exist_args, config):
+		error(f"No such package exists!")
+		return None
+	elif package_installed(package, ["case", "full-match"], config):
+		step(f"Package already installed, use 'upgrade' instead!", status="Warning", color="yellow", bold=True)
+		return None
 
-    # fetch repo
-    jump(f"Fetching")
-    ver = None
-    for arg in args:
-        if "version=" in arg:
-            ver = arg.replace("version=", "")
-            if ver == "":
-                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
-                ver = None
-    repo_path, zippath, sigpath = fetch_repo(package, cache_dir, "local" not in args, package_data, force_fetch=force_fetch, useVersion=ver)
-    if not repo_path: return None
-    
-    # load nfx.json
-    jump(f"Loading Metadata")
-    metadata = load_nfx_metadata(repo_path)
-    if not metadata: return None
-    metadata["ZIPPATH"] = zippath
-    metadata["SIGPATH"] = sigpath
-    metadata["DownloadPath"] = copy_to_downloads(repo_path, download_dir, metadata.get("Name", ""))
+	# fetch repo
+	jump(f"Fetching")
+	ver = None
+	for arg in args:
+		if "version=" in arg:
+			ver = arg.replace("version=", "")
+			if ver == "":
+				step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+				ver = None
+	repo_path, zippath, sigpath = fetch_repo(package, cache_dir, "local" not in args, package_data, force_fetch=force_fetch, useVersion=ver)
+	if not repo_path: return None
+	
+	# load nfx.json
+	jump(f"Loading Metadata")
+	metadata = load_nfx_metadata(repo_path)
+	if not metadata: return None
+	metadata["ZIPPATH"] = zippath
+	metadata["SIGPATH"] = sigpath
+	metadata["DownloadPath"] = copy_to_downloads(repo_path, download_dir, metadata.get("Name", ""))
 
-    jump(f"Checking Conflicts")
-    for conflict in metadata.get("Conflicts", []):
-        if package_installed(conflict, ["case", "full-match"], config):
-            error(f"Could not install package since it conflicts with installed '{conflict}'")
-            shutil.rmtree(os.path.join(download_dir, package))
-            return None
+	jump(f"Checking Conflicts")
+	for conflict in metadata.get("Conflicts", []):
+		if package_installed(conflict, ["case", "full-match"], config):
+			error(f"Could not install package since it conflicts with installed '{conflict}'")
+			shutil.rmtree(os.path.join(download_dir, package))
+			return None
 
-    jump(f"Resolving Dependencies")
-    dependencies = resolve_deps(package, metadata, config, args, package_data)
-    if dependencies is None:
-        shutil.rmtree(os.path.join(download_dir, package))
-        return None
+	jump(f"Resolving Dependencies")
+	dependencies = resolve_deps(package, metadata, config, args, package_data)
+	if dependencies is None:
+		shutil.rmtree(os.path.join(download_dir, package))
+		return None
 
-    jump(f"Verifying Dependencies")
-    for dep in dependencies:
-        if not package_installed(dep, ["case", "full-match"], config):
-            error(f"Could not install package since dependency '{dep}' is not installed")
-            shutil.rmtree(os.path.join(download_dir, package))
-            return None
-            
-    new_item(f"Continuing Installation of {package}")
+	jump(f"Verifying Dependencies")
+	for dep in dependencies:
+		if not package_installed(dep, ["case", "full-match"], config):
+			error(f"Could not install package since dependency '{dep}' is not installed")
+			shutil.rmtree(os.path.join(download_dir, package))
+			return None
+			
+	new_item(f"Continuing Installation of {package}")
 
-    # Do verification tests
-    jump(f"Verifying")
-    if not verify_package(repo_path, cache_dir, metadata, config):
-        error("Could not install package since verification failed")
-        shutil.rmtree(os.path.join(download_dir, package))
-        return None
-    
-    # run post install scripts from main package
-    jump(f"Running Post Install Scripts")
-    if metadata.get("PostInstall"):
-        step(f"Running post-install script: {metadata['PostInstall']}", status="Log")
-        if not run_post_install(os.path.join(metadata["DownloadPath"], metadata.get("PostInstall", []))): 
-            shutil.rmtree(os.path.join(download_dir, package))
-            return None
-    
-    # install binaries
-    jump(f"Installing Binaries")
-    if not install_binaries(metadata, install_dir):
-        shutil.rmtree(os.path.join(download_dir, package))
-        return None
+	# Do verification tests
+	jump(f"Verifying")
+	if not verify_package(repo_path, cache_dir, metadata, config):
+		error("Could not install package since verification failed")
+		shutil.rmtree(os.path.join(download_dir, package))
+		return None
+	
+	# run post install scripts from main package
+	jump(f"Running Post Install Scripts")
+	if metadata.get("PostInstall"):
+		step(f"Running post-install script: {metadata['PostInstall']}", status="Log")
+		if not run_post_install(os.path.join(metadata["DownloadPath"], metadata.get("PostInstall", []))): 
+			shutil.rmtree(os.path.join(download_dir, package))
+			return None
+	
+	# install binaries
+	jump(f"Installing Binaries")
+	if not install_binaries(metadata, install_dir):
+		shutil.rmtree(os.path.join(download_dir, package))
+		return None
 
-    jump(f"Finishing Installation")
-    finish_download(metadata.get("Name", ""), metadata)
-    
-    step(f"Package '{package}' installed successfully!", color="green", bold=True)
+	jump(f"Finishing Installation")
+	finish_download(metadata.get("Name", ""), metadata)
+	
+	step(f"Package '{package}' installed successfully!", color="green", bold=True)
 
 def remove_package(args: list, config: Config, name: str):
-    new_item(f"Removing {name}")
+	new_item(f"Removing {name}")
 
-    download_dir = config.download_dir
-    cache_dir = config.cache_dir
-    install_dir = config.install_dir
+	download_dir = config.download_dir
+	cache_dir = config.cache_dir
+	install_dir = config.install_dir
 
-    jump(f"Checking Package details")
-    if not os.path.exists(os.path.join(download_dir, name)):
-        error("Package was not found in system!")
-        return None
+	jump(f"Checking Package details")
+	if not os.path.exists(os.path.join(download_dir, name)):
+		error("Package was not found in system!")
+		return None
 
-    jump(f"Loading Metadata")
-    metadata = load_nfx_metadata(os.path.join(download_dir, name))
-    if not metadata: return None
-    
-    jump(f"Removing Binaries")
-    if not remove_binaries(metadata, install_dir): return None
-    jump(f"Removing package")
-    shutil.rmtree(os.path.join(download_dir, name))
+	jump(f"Loading Metadata")
+	metadata = load_nfx_metadata(os.path.join(download_dir, name))
+	if not metadata: return None
+	
+	jump(f"Removing Binaries")
+	if not remove_binaries(metadata, install_dir): return None
+	jump(f"Removing package")
+	shutil.rmtree(os.path.join(download_dir, name))
 
-    step(f"Package '{name}' removed successfully!", color="green", bold=True)
+	step(f"Package '{name}' removed successfully!", color="green", bold=True)
 
 def upgrade_package(package: str, args: list, config: Config):
-    """Updates a package"""
-    new_item(f"Upgrading {package}")
+	"""Updates a package"""
+	new_item(f"Upgrading {package}")
 
-    jump(f"Setting and Checking Directories")
-    download_dir = config.download_dir
-    cache_dir = config.cache_dir
-    install_dir = config.install_dir
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	jump(f"Setting and Checking Directories")
+	download_dir = config.download_dir
+	cache_dir = config.cache_dir
+	install_dir = config.install_dir
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    if not os.path.exists(download_dir):
-        os.mkdir(download_dir)
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
-    if not os.path.exists(install_dir):
-        os.mkdir(install_dir)
-    
-    update_packages([], config)
+	if not os.path.exists(download_dir):
+		os.mkdir(download_dir)
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	if not os.path.exists(install_dir):
+		os.mkdir(install_dir)
+	
+	update_packages([], config)
 
-    if "local" in args:
-        new_item("Taking Input")
-        # just remove and reinstall
-        step("Reinstall local package (y/N): ", status="Input", color="yellow", bold=True)
-        if input("").lower() not in ("y", "yes", "yeah", "yea"):
-            error("Terminating Upgrade of package", status="Action")
-            return None
-        step("Please specify proper name of package: ", status="Input", color="yellow", bold=True)
-        name = input("")
-        remove_package(args, config, name)
-        return install_package(package, args, config)
+	if "local" in args:
+		new_item("Taking Input")
+		# just remove and reinstall
+		step("Reinstall local package (y/N): ", status="Input", color="yellow", bold=True)
+		if input("").lower() not in ("y", "yes", "yeah", "yea"):
+			error("Terminating Upgrade of package", status="Action")
+			return None
+		step("Please specify proper name of package: ", status="Input", color="yellow", bold=True)
+		name = input("")
+		remove_package(args, config, name)
+		return install_package(package, args, config)
 
-    ver = None
-    for arg in args:
-        if "version=" in arg:
-            ver = arg.replace("version=", "")
-            if ver == "":
-                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
-                ver = None
+	ver = None
+	for arg in args:
+		if "version=" in arg:
+			ver = arg.replace("version=", "")
+			if ver == "":
+				step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+				ver = None
 
-    package_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        package_data = json.loads(f.read()).get("packages", [])
+	package_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		package_data = json.loads(f.read()).get("packages", [])
 
-    if not package_installed(package, ["case", "full-match"], config):
-        error(f"No such package found in system!")
-        return None
+	if not package_installed(package, ["case", "full-match"], config):
+		error(f"No such package found in system!")
+		return None
 
-    found = False
-    needed = False
-    for p in package_data:
-        name = p.get("name", "")
-        if package == name:
-            found = True
+	found = False
+	needed = False
+	for p in package_data:
+		name = p.get("name", "")
+		if package == name:
+			found = True
 
-            md = load_nfx_metadata(os.path.join(download_dir, package))
+			md = load_nfx_metadata(os.path.join(download_dir, package))
 
-            if p.get("versioning_enabled", False):
-                latestVer = p.get("latest_version", "")
-                targetVer = ""
-                versions = p.get("versions", [])
-                skip = False
-                if latestVer == "":
-                    if len(versions) <= 0:
-                        step("Package has versioning enabled but no versions! Skipping version checks", status="Warning", color="yellow", bold=True)
-                        skip = True
-                    else:
-                        step("Package has no latest version, using first version in available versions", status="Warning", color="yellow", bold=True)
-                        latestVer = versions[-1]
-                if ver is not None:
-                    targetVer = ver
-                else:
-                    targetVer = latestVer
+			if p.get("versioning_enabled", False):
+				latestVer = p.get("latest_version", "")
+				targetVer = ""
+				versions = p.get("versions", [])
+				skip = False
+				if latestVer == "":
+					if len(versions) <= 0:
+						step("Package has versioning enabled but no versions! Skipping version checks", status="Warning", color="yellow", bold=True)
+						skip = True
+					else:
+						step("Package has no latest version, using first version in available versions", status="Warning", color="yellow", bold=True)
+						latestVer = versions[-1]
+				if ver is not None:
+					targetVer = ver
+				else:
+					targetVer = latestVer
 
-                if not skip:
-                    if not targetVer in versions:
-                        error(f"Version '{targetVer}' is not a part of available versions for this package!")
-                        return None
-                    
-                    cver = md.get("Version", "0.0.1")
-                    v1 = tuple(map(int, cver.split(".")))
-                    v2 = tuple(map(int, targetVer.split(".")))
+				if not skip:
+					if not targetVer in versions:
+						error(f"Version '{targetVer}' is not a part of available versions for this package!")
+						return None
+					
+					cver = md.get("Version", "0.0.1")
+					v1 = tuple(map(int, cver.split(".")))
+					v2 = tuple(map(int, targetVer.split(".")))
 
-                    if v1 == v2:
-                        step("Target version and Current version are same!", color="green", bold=True)
-                        return None
-                    else:
-                        needed = True
+					if v1 == v2:
+						step("Target version and Current version are same!", color="green", bold=True)
+						return None
+					else:
+						needed = True
 
-            date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
-            date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
-            if date_obj > date_obj2:
-                needed = True
-            elif date_obj == date_obj2:
-                if not needed:
-                    step("Package is up to date", color="green", bold=True)
-                    return None
-            else:
-                eerror("Package/Package_List data is corrupted!", code=NFX_ERROR_DATABASE_CORRUPTED)
+			date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
+			date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
+			if date_obj > date_obj2:
+				needed = True
+			elif date_obj == date_obj2:
+				if not needed:
+					step("Package is up to date", color="green", bold=True)
+					return None
+			else:
+				eerror("Package/Package_List data is corrupted!", code=NFX_ERROR_DATABASE_CORRUPTED)
  
-            break
+			break
 
-    if not found:
-        error(f"No such package exists: {package}")
-        return None
-        
-    if not needed:
-        step("Package is up to date", color="green", bold=True)
-        return None
-    new_item(f"Continuing Upgrade of {package}")  
+	if not found:
+		error(f"No such package exists: {package}")
+		return None
+		
+	if not needed:
+		step("Package is up to date", color="green", bold=True)
+		return None
+	new_item(f"Continuing Upgrade of {package}")  
 
-    path = os.path.join(download_dir, package)
-    if not os.path.exists(path):
-        error(f"Could not find package download!")
-        error(path, type=step_desc)
-        return None
-        
-    jump("Loading Metadata")
-    metadata = load_nfx_metadata(path)
-    if not metadata: return None
-    
-    jump("Removing symlinks")
-    cancel = False
-    if not remove_binaries(metadata, install_dir): cancel = True
+	path = os.path.join(download_dir, package)
+	if not os.path.exists(path):
+		error(f"Could not find package download!")
+		error(path, type=step_desc)
+		return None
+		
+	jump("Loading Metadata")
+	metadata = load_nfx_metadata(path)
+	if not metadata: return None
+	
+	jump("Removing symlinks")
+	cancel = False
+	if not remove_binaries(metadata, install_dir): cancel = True
 
-    if cancel:
-        jump("Cancelling")
-        if not binaries_installed(metadata, install_dir):
-            install_binaries(metadata, install_dir)
-        error("Upgrade cancelled and rollback completed")
-        return None
+	if cancel:
+		jump("Cancelling")
+		if not binaries_installed(metadata, install_dir):
+			install_binaries(metadata, install_dir)
+		error("Upgrade cancelled and rollback completed")
+		return None
 
-    jump("Moving old data")
-    tmp_dir = os.path.join(BASE_DIR_DEF, "tmp_dir")
-    if not os.path.exists(tmp_dir):
-        os.mkdir(tmp_dir)
-    npath = os.path.join(tmp_dir, package)
-    shutil.move(path, npath)
-    
-    try:
-        install_package(package, args, config, force_fetch=True)
-    except Exception as e:
-        error("Exception occured, Cancelling upgrade")
-        error(str(e), type=step_desc)
-        cancel = True
-        
-    if cancel:
-        jump("Cancelling")
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        shutil.move(npath, path)
-        shutil.rmtree(tmp_dir)
-        if binaries_installed(metadata, install_dir):
-            if not remove_binaries(metadata, install_dir):
-                error("Upgrade cancelled and rollback failed", status="Critical Error")
-                return None
-        install_binaries(metadata, install_dir)
-        error("Upgrade cancelled and rollback completed")
-        return None
-        
-    jump("Removing old data")
-    shutil.rmtree(tmp_dir)
-    
-    step(f"Package '{package}' upgraded successfully!", color="green", bold=True)
+	jump("Moving old data")
+	tmp_dir = os.path.join(BASE_DIR_DEF, "tmp_dir")
+	if not os.path.exists(tmp_dir):
+		os.mkdir(tmp_dir)
+	npath = os.path.join(tmp_dir, package)
+	shutil.move(path, npath)
+	
+	try:
+		install_package(package, args, config, force_fetch=True)
+	except Exception as e:
+		error("Exception occured, Cancelling upgrade")
+		error(str(e), type=step_desc)
+		cancel = True
+		
+	if cancel:
+		jump("Cancelling")
+		if os.path.exists(path):
+			shutil.rmtree(path)
+		shutil.move(npath, path)
+		shutil.rmtree(tmp_dir)
+		if binaries_installed(metadata, install_dir):
+			if not remove_binaries(metadata, install_dir):
+				error("Upgrade cancelled and rollback failed", status="Critical Error")
+				return None
+		install_binaries(metadata, install_dir)
+		error("Upgrade cancelled and rollback completed")
+		return None
+		
+	jump("Removing old data")
+	shutil.rmtree(tmp_dir)
+	
+	step(f"Package '{package}' upgraded successfully!", color="green", bold=True)
 
 def info_package(name: str, args: list, config: Config) -> tuple[dict, str]:
-    download_dir = config.download_dir
-    cache_dir = config.cache_dir
-    install_dir = config.install_dir
+	download_dir = config.download_dir
+	cache_dir = config.cache_dir
+	install_dir = config.install_dir
 
-    if not os.path.exists(os.path.join(download_dir, name)):
-        eerror(f"Package '{name}' was not found in cache", code=NFX_ERROR_CACHE_MISS)
+	if not os.path.exists(os.path.join(download_dir, name)):
+		eerror(f"Package '{name}' was not found in cache", code=NFX_ERROR_CACHE_MISS)
 
-    metadata = load_nfx_metadata(os.path.join(download_dir, name))
-    return metadata, os.path.join(download_dir, name)
+	metadata = load_nfx_metadata(os.path.join(download_dir, name))
+	return metadata, os.path.join(download_dir, name)
 
 def install_packages(packages: list, args: list, config: Config):
-    new_item("Installing Packages")
+	new_item("Installing Packages")
 
-    jump("Checking and Setting directories")
-    download_dir = config.download_dir
-    cache_dir = config.cache_dir
-    install_dir = config.install_dir
-    packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
+	jump("Checking and Setting directories")
+	download_dir = config.download_dir
+	cache_dir = config.cache_dir
+	install_dir = config.install_dir
+	packages_json = os.path.join(BASE_DIR_DEF, "packages.json")
 
-    if not os.path.exists(download_dir):
-        os.mkdir(download_dir)
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
-    if not os.path.exists(install_dir):
-        os.mkdir(install_dir)
-    
-    update_packages([], config)
+	if not os.path.exists(download_dir):
+		os.mkdir(download_dir)
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	if not os.path.exists(install_dir):
+		os.mkdir(install_dir)
+	
+	update_packages([], config)
 
-    package_data = {}
-    with open(packages_json, "r") as f:
-        f.seek(0)
-        package_data = json.loads(f.read()).get("packages", [])
+	package_data = {}
+	with open(packages_json, "r") as f:
+		f.seek(0)
+		package_data = json.loads(f.read()).get("packages", [])
 
-    jump("Checking Packages")
-    for package in packages:
-        if not package_exists(package, ["case", "full-match"], config):
-            error(f"No such package exists: {package}")
-            return None
-        elif package_installed(package, ["case", "full-match"], config):
-            step(f"Package already installed: {package} try using 'upgrades' instead (skipping)", status="Warning", color="yellow", bold=True)
-            packages.pop(packages.index(package))
-    mthreads = 4
-    for arg in args:
-        if "thread=" in arg:
-            v:str = arg.replace("thread=", "")
-            if not v.isdigit():
-                step_nitem("Provide a number in argument 'threads', defaulting to 4", status="Warning", color="yellow", bold=True)
-            else:
-                mthreads = int(v)
+	jump("Checking Packages")
+	valid_requested = []
+	for package in packages:
+		if not package_exists(package, ["case", "full-match"], config):
+			error(f"No such package exists: {package}")
+			return None
+		elif package_installed(package, ["case", "full-match"], config):
+			step(f"Package already installed: {package} try using 'upgrades' instead (skipping)", status="Warning", color="yellow", bold=True)
+			valid_requested.append(package)
 
-    valid_packages = []
-    results = None
+	mthreads = 4
+	for arg in args:
+		if "thread=" in arg:
+			v:str = arg.replace("thread=", "")
+			if not v.isdigit():
+				step_nitem("Provide a number in argument 'threads', defaulting to 4", status="Warning", color="yellow", bold=True)
+			else:
+				mthreads = int(v)
 
-    ver = None
-    for arg in args:
-        if "version=" in arg:
-            ver = arg.replace("version=", "")
-            if ver == "":
-                step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
-                ver = None
-    
-    jump("Fetching Packages")
-    cli.Cursor.HideCursor()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=mthreads) as executor:
-        results = executor.map(
-            lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data, pb=ConcurProgressBar, autoHideShowCursor=False, useVersion=ver),
-            packages
-        )
+	valid_packages = []
+	results = None
 
-    cli.Cursor.ShowCusor()
-    packages_cpy = packages.copy()
-    for pkg, ok in zip(packages_cpy, results):
-        if not ok:
-            step_nitem(f"Package '{pkg}' failed to fetch properly, skipping...", status="Warning", color="yellow", bold=True)
-        else:
-                valid_packages.append(pkg)
+	ver = None
+	for arg in args:
+		if "version=" in arg:
+			ver = arg.replace("version=", "")
+			if ver == "":
+				step("Specified no version! using latest", status="Warning", color="yellow", bold=True)
+				ver = None
+	
+	jump("Fetching Packages")
+	cli.Cursor.HideCursor()
+	with concurrent.futures.ThreadPoolExecutor(max_workers=mthreads) as executor:
+		results = executor.map(
+			lambda _pkg_: fetch_repo(_pkg_, cache_dir, "local" not in args, package_data, pb=ConcurProgressBar, autoHideShowCursor=False, useVersion=ver),
+			valid_requested
+		)
 
-    jump("Installing")
-    for pkg in valid_packages:
-        install_package(pkg, args, config)
+	cli.Cursor.ShowCusor()
+	packages_cpy = valid_requested.copy()
+	for pkg, ok in zip(packages_cpy, results):
+		if not ok or ok[0] is None:
+			step_nitem(f"Package '{pkg}' failed to fetch properly, skipping...", status="Warning", color="yellow", bold=True)
+		else:
+			valid_packages.append(pkg)
+
+	jump("Installing")
+	for pkg in valid_packages:
+		install_package(pkg, args, config)
 
 def upgrade_packages(packages: list, args: list, config: Config):
-    for pkg in packages: # cant do parallel here
-        upgrade_package(pkg, args, config)
+	for pkg in packages: # cant do parallel here
+		upgrade_package(pkg, args, config)
 
 def remove_packages(packages: list, args: list, config: Config):
-    for pkg in packages: # cant do parallel here
-        remove_package(args, config, pkg)
+	for pkg in packages: # cant do parallel here
+		remove_package(args, config, pkg)
 
 def enable_winterminal():
-    import sys
-    if sys.platform.startswith('win'):
-        try:
-            import ctypes, wintypes
-            kernel32 = ctypes.windll.kernel32
-            kernel32.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-            kernel32.SetConsoleMode.restype = wintypes.BOOL
-            kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
-            kernel32.GetStdHandle.restype = wintypes.HANDLE
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
-        except Exception:
-            pass    
-            
+	import sys
+	if sys.platform.startswith('win'):
+		try:
+			import ctypes, wintypes
+			kernel32 = ctypes.windll.kernel32
+			kernel32.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+			kernel32.SetConsoleMode.restype = wintypes.BOOL
+			kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+			kernel32.GetStdHandle.restype = wintypes.HANDLE
+			kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+		except Exception:
+			pass    
+			

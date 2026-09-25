@@ -11,8 +11,8 @@
         "linux"
       ],
       "Path": "bin/linux/x86_64/dist/nfx",
-      "Sha256": "b1f3d451e2710065e1f083aa43a2d49dd6fbb0c0d25cb29e6d99814f9b0561b5",
-      "Size": 10589944
+      "Sha256": "a390dffd2b25265c0da03c0ea83ae0dffb3eba93c0d879164b8af443a06a7dfa",
+      "Size": 13749416
     },
     {
       "Arch": [
@@ -24,14 +24,14 @@
         "windows"
       ],
       "Path": "bin/windows/x86_64/dist/nfx.exe",
-      "Sha256": "a17c14d81925b929da6c5af1eb3ee4e234a974200a447fd3ebc58c055845d8f4",
-      "Size": 8208226
+      "Sha256": "0e0b5253353be0aa7ba8976b27136e912c2fe0d14101238d668022d3b6f2e3c5",
+      "Size": 8209288
     }
   ],
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
-    "Date": "2026-05-19 22:13",
-    "SignatureIdentity": "pheonix-nfx"
+    "Date": "2026-09-26 00:41",
+    "SignatureIdentity": "pheonix-package-index"
   },
   "Conflicts": [],
   "Dependencies": [],
