@@ -11,8 +11,8 @@
         "linux"
       ],
       "Path": "bin/linux/x86_64/dist/nfx",
-      "Sha256": "a390dffd2b25265c0da03c0ea83ae0dffb3eba93c0d879164b8af443a06a7dfa",
-      "Size": 13749416
+      "Sha256": "da522e71cd7219b0ab40901185ba5085088314a63d84c08090969d8bfc6df50d",
+      "Size": 45251832
     },
     {
       "Arch": [
@@ -24,15 +24,16 @@
         "windows"
       ],
       "Path": "bin/windows/x86_64/dist/nfx.exe",
-      "Sha256": "0e0b5253353be0aa7ba8976b27136e912c2fe0d14101238d668022d3b6f2e3c5",
-      "Size": 8209288
+      "Sha256": "5b8387305058f6002ae9b80f0500f9982e6b908f28be5cf5f34f4e4c8daf6946",
+      "Size": 10992236
     }
   ],
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
-    "Date": "2026-09-26 00:41",
+    "Date": "2026-10-01 01:07",
     "SignatureIdentity": "pheonix-package-index"
   },
+  "Changelog": "CHANGELOG.md",
   "Conflicts": [],
   "Dependencies": [],
   "Description": "Nova Pheonix Package Manager",
@@ -41,5 +42,5 @@
   "Name": "NFX",
   "Readme": "README.md",
   "Status": "beta",
-  "Version": "1.0.2"
+  "Version": "1.0.3"
 }

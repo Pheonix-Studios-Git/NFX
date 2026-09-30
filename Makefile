@@ -1,7 +1,8 @@
 NFX := nfx/nfx.json
 LICENSE := LICENSE
 README := README.md
-VERSION := 1.0.2
+CHANGELOG := CHANGELOG.md
+VERSION := 1.0.3
 
 LINUX_x86_64_DIR := bin/linux/x86_64
 WINDOWS_x86_64_DIR := bin/windows/x86_64
@@ -96,6 +97,7 @@ zip: dirs build-linux build-windows canonical
 		$(NFX_WINDOWS_OUT) \
 		$(LICENSE) \
 		$(README) \
+		$(CHANGELOG) \
 		$(KEY_DIR)/allowed_signers
 	@rm nfx.json
 	@printf "$(GREEN)==> Created Zip! (%s) \n$(RESET)" $(ZIP)

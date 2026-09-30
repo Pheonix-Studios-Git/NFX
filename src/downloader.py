@@ -634,7 +634,7 @@ def package_exists(pkg: str, args: list, config: Config):
 
 def package_installed(pkg: str, args: list, config: Config):
 	"""Checks if a package is installed"""
-	_, __, ___, ipkgs, _____, ______ = get_all_packages(config)
+	dpkgs, __, ___, ____, _____, ______ = get_all_packages(config)
 
 	case = False
 	full_match = "full-match" in args
@@ -644,7 +644,7 @@ def package_installed(pkg: str, args: list, config: Config):
 	else:
 		query = pkg.lower()
 
-	for package in ipkgs:
+	for package in dpkgs:
 		n = package
 		if not case: n = package.lower()
 
@@ -1277,6 +1277,7 @@ def install_packages(packages: list, args: list, config: Config):
 			return None
 		elif package_installed(package, ["case", "full-match"], config):
 			step(f"Package already installed: {package} try using 'upgrades' instead (skipping)", status="Warning", color="yellow", bold=True)
+		else:
 			valid_requested.append(package)
 
 	mthreads = 4
@@ -1340,4 +1341,4 @@ def enable_winterminal():
 			kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
 		except Exception:
 			pass    
-			
+

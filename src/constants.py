@@ -4,7 +4,7 @@ import os
 import platform
 
 APP_NAME = "nfx"
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 DEVELOPER = "Pheonix Studios"
 
 SYSTEM = platform.system()
