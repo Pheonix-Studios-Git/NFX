@@ -1127,38 +1127,6 @@ def upgrade_package(package: str, args: list, config: Config):
 
 			md = load_nfx_metadata(os.path.join(download_dir, package))
 
-			if p.get("versioning_enabled", False):
-				latestVer = p.get("latest_version", "")
-				targetVer = ""
-				versions = p.get("versions", [])
-				skip = False
-				if latestVer == "":
-					if len(versions) <= 0:
-						step("Package has versioning enabled but no versions! Skipping version checks", status="Warning", color="yellow", bold=True)
-						skip = True
-					else:
-						step("Package has no latest version, using first version in available versions", status="Warning", color="yellow", bold=True)
-						latestVer = versions[-1]
-				if ver is not None:
-					targetVer = ver
-				else:
-					targetVer = latestVer
-
-				if not skip:
-					if not targetVer in versions:
-						error(f"Version '{targetVer}' is not a part of available versions for this package!")
-						return None
-					
-					cver = md.get("Version", "0.0.1")
-					v1 = tuple(map(int, cver.split(".")))
-					v2 = tuple(map(int, targetVer.split(".")))
-
-					if v1 == v2:
-						step("Target version and Current version are same!", color="green", bold=True)
-						return None
-					else:
-						needed = True
-
 			date_obj = datetime.strptime(p.get("update", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
 			date_obj2 = datetime.strptime(md.get("Build", {}).get("Date", "1970-01-01 00:00"), "%Y-%m-%d %H:%M")
 			if date_obj > date_obj2:

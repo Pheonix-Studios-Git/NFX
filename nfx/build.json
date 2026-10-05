@@ -11,7 +11,7 @@
   "Build": {
     "AllowedSigners": "keys/allowed_signers",
     "SignatureIdentity": "pheonix-package-index",
-    "Date": "2026-10-01 01:07"
+    "Date": "2026-10-05 23:03"
   },
   "Binaries": [
     {
@@ -23,8 +23,8 @@
         "x86_64"
       ],
       "Path": "bin/linux/x86_64/dist/nfx",
-      "Size": 45251832,
-      "Sha256": "da522e71cd7219b0ab40901185ba5085088314a63d84c08090969d8bfc6df50d",
+      "Size": 45298800,
+      "Sha256": "f54bb31727413a4ba0ad3975824b53e4257ec339fbf09bbfb83df59ca144cfcf",
       "Executable": true
     },
     {
@@ -36,8 +36,8 @@
         "x86_64"
       ],
       "Path": "bin/windows/x86_64/dist/nfx.exe",
-      "Size": 10992236,
-      "Sha256": "5b8387305058f6002ae9b80f0500f9982e6b908f28be5cf5f34f4e4c8daf6946",
+      "Size": 10991532,
+      "Sha256": "e5d9d2193c476ffce1a5f0dc6b6d2fac3148dce0ae5f90bcbae2ba40283d2979",
       "Executable": true
     }
   ],

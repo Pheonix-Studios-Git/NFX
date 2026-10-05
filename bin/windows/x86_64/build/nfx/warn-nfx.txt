@@ -21,7 +21,7 @@ missing module named _posixsubprocess - imported by subprocess (top-level), mult
 missing module named fcntl - imported by subprocess (top-level), pty (top-level)
 missing module named _frozen_importlib_external - imported by importlib (top-level), importlib._bootstrap (top-level), importlib.abc (top-level), zipimport (top-level)
 excluded module named _frozen_importlib - imported by importlib (top-level), importlib.abc (top-level), zipimport (top-level)
-missing module named posix - imported by posixpath (top-level), shutil (top-level), importlib._bootstrap_external (top-level), os (top-level)
+missing module named posix - imported by os (top-level), posixpath (top-level), shutil (top-level), importlib._bootstrap_external (top-level)
 missing module named resource - imported by posix (top-level)
 missing module named _posixshmem - imported by multiprocessing.resource_tracker (top-level), multiprocessing.shared_memory (top-level)
 missing module named termios - imported by tty (top-level), _pyrepl.pager (top-level), getpass (top-level)
